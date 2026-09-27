@@ -8,6 +8,8 @@
     -> [MOBILE] Full touch support: drag / resize / sliders / colorpicker / keybind / settings
     -> [MOBILE] Unified debounced click helper (MouseButton1Click + TouchTap — no double-fire)
     -> [MOBILE] Long-press on keybind opens the mode dropdown (replaces right-click)
+    -> [MOBILE] UI scale auto-fit for ~720p screens
+    -> [MOBILE] Floating toggle button to open/close menu
 ]]
 
 -- Variables 
@@ -28,6 +30,14 @@
     -- [MOBILE] Detect touch device
     local is_mobile = uis.TouchEnabled and not uis.KeyboardEnabled
     local viewport_size = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+
+    -- [MOBILE] UI scale factor — ทำให้ UI พอดีกับจอ 720p
+    -- ถ้าจอสั้นกว่า 900px (เช่น 720p) จะย่อลงตามส่วน, ต่ำสุด 0.65
+    local mobile_ui_scale = 1
+    if is_mobile then
+        local short_side = math.min(viewport_size.X, viewport_size.Y)
+        mobile_ui_scale = math.clamp(short_side / 900, 0.65, 1)
+    end
 
     local vec2 = Vector2.new
     local vec3 = Vector3.new
@@ -497,6 +507,7 @@
         function library:unload_menu() 
             if library[ "items" ] then library[ "items" ]:Destroy() end
             if library[ "other" ] then library[ "other" ]:Destroy() end 
+            if library[ "mobile_gui" ] then library[ "mobile_gui" ]:Destroy() end  -- [MOBILE]
             for index, connection in library.connections do 
                 connection:Disconnect() 
                 connection = nil 
@@ -507,11 +518,11 @@
     
     -- Library element functions
         function library:window(properties)
-            -- [MOBILE] Auto-fit window to mobile viewport
+            -- [MOBILE] Auto-fit window to mobile viewport (scaled for ~720p screens)
             local default_size = dim2(0, 700, 0, 565)
             if is_mobile then
-                local w = clamp(viewport_size.X * 0.94, 320, 700)
-                local h = clamp(viewport_size.Y * 0.82, 340, 565)
+                local w = clamp(viewport_size.X * 0.90, 300, 700) * mobile_ui_scale
+                local h = clamp(viewport_size.Y * 0.82, 320, 565) * mobile_ui_scale
                 default_size = dim2(0, w, 0, h)
             end
 
@@ -540,6 +551,44 @@
                 ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
                 IgnoreGuiInset = true;
             }); 
+
+            -- [MOBILE] ปุ่มลอยสำหรับเปิด/ปิดเมนู (แยก ScreenGui เพื่อไม่โดนซ่อนพร้อมเมนู)
+            if is_mobile then
+                library[ "mobile_gui" ] = library:create( "ScreenGui" , {
+                    Parent = coregui;
+                    Name = "\0";
+                    Enabled = true;
+                    ZIndexBehavior = Enum.ZIndexBehavior.Global;
+                    IgnoreGuiInset = true;
+                });
+
+                local toggle_btn = library:create( "TextButton" , {
+                    Parent = library[ "mobile_gui" ];
+                    Size = dim2(0, 46, 0, 46);
+                    Position = dim2(0, 14, 0, 60);
+                    BackgroundColor3 = themes.preset.accent;
+                    Text = "×";
+                    TextColor3 = rgb(255, 255, 255);
+                    TextSize = 26;
+                    FontFace = fonts.font;
+                    AutoButtonColor = false;
+                    BorderSizePixel = 0;
+                    ZIndex = 1;
+                });
+                library:create( "UICorner" , { Parent = toggle_btn; CornerRadius = dim(0, 999) });
+                library:create( "UIStroke" , { Parent = toggle_btn; Color = rgb(23, 23, 29); Thickness = 1 });
+                library:apply_theme(toggle_btn, "accent", "BackgroundColor3");
+
+                library[ "mobile_toggle_btn" ] = toggle_btn
+
+                local menu_open = true
+                bind_click(toggle_btn, function()
+                    menu_open = not menu_open
+                    library[ "items" ].Enabled = menu_open
+                    library[ "other" ].Enabled = false  -- ปิด popup ค้างไว้ด้วย
+                    toggle_btn.Text = menu_open and "×" or "≡"
+                end)
+            end
 
             local items = cfg.items; do
                 items[ "main" ] = library:create( "Frame" , {
@@ -752,6 +801,10 @@
 
             function cfg.toggle_menu(bool) 
                 library[ "items" ].Enabled = bool
+                -- [MOBILE] sync ปุ่มลอยให้ตรงกับ state
+                if library[ "mobile_toggle_btn" ] then
+                    library[ "mobile_toggle_btn" ].Text = bool and "×" or "≡"
+                end
             end 
 
             return setmetatable(cfg, library)
@@ -1663,21 +1716,27 @@
                 flags[cfg.flag] = bool
             end 
             
-            -- [MOBILE] unified debounced click — one handler on the row.
-            --          The toggle_button is a child of the row; on touch devices the row's
-            --          TouchTap will already fire, so we do NOT attach another handler to
-            --          toggle_button (avoids the double-toggle issue).
-            bind_click(items[ "toggle" ], function()
-                cfg.enabled = not cfg.enabled 
+            -- [MOBILE] Shared-debounced toggle — ผูกทั้ง row + switch
+            -- ใช้ debounce ร่วมกันเพื่อกัน TouchTap + MouseButton1Click ยิงซ้ำ
+            local _toggle_last = 0
+            local function _do_toggle()
+                local now = os.clock()
+                if now - _toggle_last < 0.25 then return end
+                _toggle_last = now
+                cfg.enabled = not cfg.enabled
                 cfg.set(cfg.enabled)
-            end)
+            end
 
-            -- Desktop also needs the switch itself clickable (mouse users expect it).
-            if not is_mobile then
-                items[ "toggle_button" ].MouseButton1Click:Connect(function()
-                    cfg.enabled = not cfg.enabled 
-                    cfg.set(cfg.enabled)
-                end)
+            -- Row-level (คลิก/แตะที่แถวไหนก็ได้)
+            items[ "toggle" ].MouseButton1Click:Connect(_do_toggle)
+            items[ "toggle" ].TouchTap:Connect(_do_toggle)
+            -- Switch เอง (เผื่อ tap ลงบนสวิตช์โดยตรง — บนมือถือ Roblox ไม่ bubble TouchTap ขึ้น parent)
+            items[ "toggle_button" ].MouseButton1Click:Connect(_do_toggle)
+            items[ "toggle_button" ].TouchTap:Connect(_do_toggle)
+
+            -- [MOBILE] แสดงผลสถานะเริ่มต้น
+            if cfg.default then
+                cfg.enabled = true
             end
             
             if cfg.seperator then
