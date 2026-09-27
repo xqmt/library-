@@ -10,8 +10,6 @@
     -> [MOBILE] Long-press on keybind opens the mode dropdown (replaces right-click)
     -> [MOBILE] UI scale auto-fit for ~720p screens
     -> [MOBILE] Floating toggle button to open/close menu
-
-    -> [THEME] Accent / Background / Main / Font / Shadow / Top Bar / Slider Corner / Slider Transparency
 ]]
 
 -- Variables 
@@ -34,10 +32,11 @@
     local viewport_size = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
 
     -- [MOBILE] UI scale factor — ทำให้ UI พอดีกับจอ 720p
+    -- ถ้าจอสั้นกว่า 900px (เช่น 720p) จะย่อลงตามส่วน, ต่ำสุด 0.65
     local mobile_ui_scale = 1
     if is_mobile then
         local short_side = math.min(viewport_size.X, viewport_size.Y)
-        mobile_ui_scale = math.clamp(short_side / 900, 0.65, 1)
+        mobile_ui_scale = math.clamp(short_side / 950, 0.75, 1)
     end
 
     local vec2 = Vector2.new
@@ -86,6 +85,7 @@
 -- 
 
 -- [MOBILE] Shared input helpers
+    -- Debounced activation helper: fires once regardless of MouseButton1Click + TouchTap duplicates
     local function bind_click(gui, callback)
         local last_fire = 0
         local function fire(...)
@@ -98,6 +98,7 @@
         gui.TouchTap:Connect(fire)
     end
 
+    -- Fires on press for both mouse-left and touch
     local function bind_press(gui, callback)
         gui.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 
@@ -107,6 +108,7 @@
         end)
     end
 
+    -- Fires on release for both mouse-left and touch
     local function bind_release(gui, callback)
         gui.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 
@@ -129,20 +131,11 @@
         connections = {},   
         notifications = {notifs = {}},
         current_open; 
-
-        -- [THEME] Slider styling (ปรับสดได้จาก Settings > Theme)
-        slider_corner = 999,
-        slider_transparency = 0,
     }
 
     local themes = {
         preset = {
-            accent     = rgb(155, 150, 219),
-            background = rgb(14, 14, 16),
-            main       = rgb(22, 22, 24),
-            font       = rgb(245, 245, 245),
-            shadow     = rgb(0, 0, 0),
-            topbar     = rgb(25, 25, 29),
+            accent = rgb(155, 150, 219),
         }, 
 
         utility = {
@@ -151,21 +144,6 @@
                 TextColor3 = {}, 
                 ImageColor3 = {}, 
                 ScrollBarImageColor3 = {} 
-            },
-            background = {
-                BackgroundColor3 = {},
-            },
-            main = {
-                BackgroundColor3 = {},
-            },
-            font = {
-                TextColor3 = {},
-            },
-            shadow = {
-                ImageColor3 = {},
-            },
-            topbar = {
-                BackgroundColor3 = {},
             },
         }
     }
@@ -289,6 +267,7 @@
 
         function library:resizify(frame) 
             local Frame = Instance.new("TextButton")
+            -- [MOBILE] Bigger touch target
             local handle_size = is_mobile and 22 or 10
             Frame.Position = dim2(1, -(handle_size + 2), 1, -(handle_size + 2))
             Frame.BorderColor3 = rgb(0, 0, 0)
@@ -304,6 +283,7 @@
             local start 
             local og_size = frame.Size  
 
+            -- [MOBILE] Handle mouse AND touch
             Frame.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 
                     or input.UserInputType == Enum.UserInputType.Touch then
@@ -485,23 +465,14 @@
         end 
 
         function library:apply_theme(instance, theme, property) 
-            if not themes.utility[theme] then 
-                themes.utility[theme] = {}
-            end
-            if not themes.utility[theme][property] then 
-                themes.utility[theme][property] = {}
-            end
             insert(themes.utility[theme][property], instance)
         end
 
         function library:update_theme(theme, color)
-            local bucket = themes.utility[theme]
-            if not bucket then return end
-
-            for property_name, list in bucket do 
-                for _, object in list do 
-                    if object and object.Parent then 
-                        object[property_name] = color 
+            for _, property in themes.utility[theme] do 
+                for m, object in property do 
+                    if object[_] == themes.preset[theme] then 
+                        object[_] = color 
                     end 
                 end 
             end 
@@ -536,7 +507,7 @@
         function library:unload_menu() 
             if library[ "items" ] then library[ "items" ]:Destroy() end
             if library[ "other" ] then library[ "other" ]:Destroy() end 
-            if library[ "mobile_gui" ] then library[ "mobile_gui" ]:Destroy() end
+            if library[ "mobile_gui" ] then library[ "mobile_gui" ]:Destroy() end  -- [MOBILE]
             for index, connection in library.connections do 
                 connection:Disconnect() 
                 connection = nil 
@@ -547,6 +518,7 @@
     
     -- Library element functions
         function library:window(properties)
+            -- [MOBILE] Auto-fit window to mobile viewport (scaled for ~720p screens)
             local default_size = dim2(0, 700, 0, 565)
             if is_mobile then
                 local w = clamp(viewport_size.X * 0.90, 300, 700) * mobile_ui_scale
@@ -580,6 +552,7 @@
                 IgnoreGuiInset = true;
             }); 
 
+            -- [MOBILE] ปุ่มลอยสำหรับเปิด/ปิดเมนู (แยก ScreenGui เพื่อไม่โดนซ่อนพร้อมเมนู)
             if is_mobile then
                 library[ "mobile_gui" ] = library:create( "ScreenGui" , {
                     Parent = coregui;
@@ -612,7 +585,7 @@
                 bind_click(toggle_btn, function()
                     menu_open = not menu_open
                     library[ "items" ].Enabled = menu_open
-                    library[ "other" ].Enabled = false
+                    library[ "other" ].Enabled = false  -- ปิด popup ค้างไว้ด้วย
                     toggle_btn.Text = menu_open and "×" or "≡"
                 end)
             end
@@ -625,10 +598,8 @@
                     Position = dim2(0.5, -cfg.size.X.Offset / 2, 0.5, -cfg.size.Y.Offset / 2);
                     BorderColor3 = rgb(0, 0, 0);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.background
-                }); 
-                library:apply_theme(items[ "main" ], "background", "BackgroundColor3")
-                items[ "main" ].Position = dim2(0, items[ "main" ].AbsolutePosition.X, 0, items[ "main" ].AbsolutePosition.Y)
+                    BackgroundColor3 = rgb(14, 14, 16)
+                }); items[ "main" ].Position = dim2(0, items[ "main" ].AbsolutePosition.X, 0, items[ "main" ].AbsolutePosition.Y)
                 
                 library:create( "UICorner" , {
                     Parent = items[ "main" ];
@@ -649,9 +620,8 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(0, side_width, 1, -25);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.background
+                    BackgroundColor3 = rgb(14, 14, 16)
                 });
-                library:apply_theme(items[ "side_frame" ], "background", "BackgroundColor3")
                 
                 library:create( "Frame" , {
                     AnchorPoint = vec2(1, 0);
@@ -692,7 +662,7 @@
                 items[ "title" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
                     BorderColor3 = rgb(0, 0, 0);
-                    Text = cfg.name;
+                    Text = name;
                     Parent = items[ "side_frame" ];
                     Name = "\0";
                     Text = string.format('<u>%s</u><font color = "rgb(255, 255, 255)">%s</font>', cfg.name, cfg.suffix);
@@ -727,7 +697,7 @@
                 });
                 
                 items[ "shadow" ] = library:create( "ImageLabel" , {
-                    ImageColor3 = themes.preset.shadow;
+                    ImageColor3 = rgb(0, 0, 0);
                     ScaleType = Enum.ScaleType.Slice;
                     Parent = items[ "main" ];
                     BorderColor3 = rgb(0, 0, 0);
@@ -743,7 +713,6 @@
                     BorderSizePixel = 0;
                     SliceCenter = rect(vec2(112, 112), vec2(147, 147))
                 });
-                library:apply_theme(items[ "shadow" ], "shadow", "ImageColor3");
                 
                 items[ "global_fade" ] = library:create( "Frame" , {
                     Parent = items[ "main" ];
@@ -770,9 +739,8 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(1, 0, 0, 25);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.topbar
+                    BackgroundColor3 = rgb(23, 23, 25)
                 });
-                library:apply_theme(items[ "info" ], "topbar", "BackgroundColor3");
                 
                 library:create( "UICorner" , {
                     Parent = items[ "info" ];
@@ -785,14 +753,13 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(1, 0, 0, 6);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.topbar
+                    BackgroundColor3 = rgb(23, 23, 25)
                 });
-                library:apply_theme(items[ "grey_fill" ], "topbar", "BackgroundColor3");
                 
                 items[ "game" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
                     Parent = items[ "info" ];
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(72, 72, 73);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.game_name;
                     Name = "\0";
@@ -806,7 +773,6 @@
                     TextSize = 14;
                     BackgroundColor3 = rgb(255, 255, 255)
                 }); 
-                library:apply_theme(items[ "game" ], "font", "TextColor3");
                 
                 items[ "other_info" ] = library:create( "TextLabel" , {
                     Parent = items[ "info" ];
@@ -835,6 +801,7 @@
 
             function cfg.toggle_menu(bool) 
                 library[ "items" ].Enabled = bool
+                -- [MOBILE] sync ปุ่มลอยให้ตรงกับ state
                 if library[ "mobile_toggle_btn" ] then
                     library[ "mobile_toggle_btn" ].Text = bool and "×" or "≡"
                 end
@@ -1106,6 +1073,7 @@
                             library:close_element()
                         end
 
+                        -- [MOBILE] unified debounced click
                         bind_click(multi_items[ "button" ], function()
                             data.open_page() 
                         end)
@@ -1160,6 +1128,7 @@
                 library:close_element()
             end
 
+            -- [MOBILE] unified debounced click
             bind_click(items[ "button" ], function()
                 cfg.open_tab()
             end)
@@ -1281,9 +1250,8 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(0, 0, cfg.size, -3);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.main
+                    BackgroundColor3 = rgb(25, 25, 29)
                 });
-                library:apply_theme(items[ "outline" ], "main", "BackgroundColor3")
 
                 library:create( "UICorner" , {
                     Parent = items[ "outline" ];
@@ -1297,9 +1265,8 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(1, -2, 1, -2);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.main
+                    BackgroundColor3 = rgb(22, 22, 24)
                 });
-                library:apply_theme(items[ "inline" ], "main", "BackgroundColor3")
                 
                 library:create( "UICorner" , {
                     Parent = items[ "inline" ];
@@ -1310,6 +1277,7 @@
                     ScrollBarImageColor3 = rgb(44, 44, 46);
                     Active = true;
                     AutomaticCanvasSize = Enum.AutomaticSize.Y;
+                    -- [MOBILE] Thicker scrollbar for fingers
                     ScrollBarThickness = is_mobile and 4 or 2;
                     Parent = items[ "inline" ];
                     Name = "\0";
@@ -1357,9 +1325,8 @@
                     Size = dim2(1, -2, 0, 35);
                     BorderSizePixel = 0;
                     TextSize = 16;
-                    BackgroundColor3 = themes.preset.topbar
+                    BackgroundColor3 = rgb(19, 19, 21)
                 });
-                library:apply_theme(items[ "button" ], "topbar", "BackgroundColor3")
                 
                 library:create( "UIStroke" , {
                     Color = rgb(23, 23, 29);
@@ -1389,7 +1356,7 @@
                 
                 items[ "section_title" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(255, 255, 255);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "button" ];
@@ -1403,7 +1370,6 @@
                     TextSize = 16;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "section_title" ], "font", "TextColor3");
                 
                 library:create( "Frame" , {
                     AnchorPoint = vec2(0, 1);
@@ -1496,6 +1462,7 @@
             end;
 
             if cfg.fading_toggle then
+                -- [MOBILE] unified debounced click (handles both mouse + touch)
                 bind_click(items[ "button" ], function()
                     cfg.default = not cfg.default 
                     cfg.toggle_section(cfg.default) 
@@ -1541,6 +1508,7 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
+                    -- [MOBILE] taller row for finger
                     Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
@@ -1550,7 +1518,7 @@
                 
                 items[ "name" ] = library:create( "TextLabel" , {
                     FontFace = fonts.small;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "toggle" ];
@@ -1563,7 +1531,6 @@
                     TextSize = 16;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "name" ], "font", "TextColor3")
 
                 if cfg.info then 
                     items[ "info" ] = library:create( "TextLabel" , {
@@ -1622,6 +1589,7 @@
                             Parent = items[ "right_components" ];
                             Name = "\0";
                             Position = dim2(1, 0, 0, 0);
+                            -- [MOBILE] slightly bigger checkbox
                             Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                             BorderSizePixel = 0;
                             TextSize = 14;
@@ -1748,6 +1716,8 @@
                 flags[cfg.flag] = bool
             end 
             
+            -- [MOBILE] Shared-debounced toggle — ผูกทั้ง row + switch
+            -- ใช้ debounce ร่วมกันเพื่อกัน TouchTap + MouseButton1Click ยิงซ้ำ
             local _toggle_last = 0
             local function _do_toggle()
                 local now = os.clock()
@@ -1757,11 +1727,14 @@
                 cfg.set(cfg.enabled)
             end
 
+            -- Row-level (คลิก/แตะที่แถวไหนก็ได้)
             items[ "toggle" ].MouseButton1Click:Connect(_do_toggle)
             items[ "toggle" ].TouchTap:Connect(_do_toggle)
+            -- Switch เอง (เผื่อ tap ลงบนสวิตช์โดยตรง — บนมือถือ Roblox ไม่ bubble TouchTap ขึ้น parent)
             items[ "toggle_button" ].MouseButton1Click:Connect(_do_toggle)
             items[ "toggle_button" ].TouchTap:Connect(_do_toggle)
 
+            -- [MOBILE] แสดงผลสถานะเริ่มต้น
             if cfg.default then
                 cfg.enabled = true
             end
@@ -1814,6 +1787,7 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
+                    -- [MOBILE] Taller slider row for finger hit
                     Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
@@ -1823,7 +1797,7 @@
                 
                 items[ "name" ] = library:create( "TextLabel" , {
                     FontFace = fonts.small;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "slider_object" ];
@@ -1836,7 +1810,6 @@
                     TextSize = 16;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "name" ], "font", "TextColor3")
                 
                 if cfg.info then 
                     items[ "info" ] = library:create( "TextLabel" , {
@@ -1870,6 +1843,7 @@
                     BackgroundTransparency = 1;
                     Position = dim2(0, 4, 0, 23);
                     BorderColor3 = rgb(0, 0, 0);
+                    -- [MOBILE] Taller slider bar area
                     Size = dim2(1, 0, 0, is_mobile and 16 or 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
@@ -1892,17 +1866,16 @@
                     Parent = items[ "right_components" ];
                     Name = "\0";
                     Position = dim2(1, 0, 0, 0);
+                    -- [MOBILE] Thicker bar for finger
                     Size = is_mobile and dim2(1, -4, 0, 6) or dim2(1, -4, 0, 4);
                     BorderSizePixel = 0;
                     TextSize = 14;
-                    BackgroundColor3 = rgb(33, 33, 35);
-                    BackgroundTransparency = library.slider_transparency;
+                    BackgroundColor3 = rgb(33, 33, 35)
                 });
-                items[ "slider" ]:SetAttribute("IsSlider", true)
                 
                 library:create( "UICorner" , {
                     Parent = items[ "slider" ];
-                    CornerRadius = dim(0, library.slider_corner)
+                    CornerRadius = dim(0, 999)
                 });
                 
                 items[ "fill" ] = library:create( "Frame" , {
@@ -1913,11 +1886,10 @@
                     BorderSizePixel = 0;
                     BackgroundColor3 = themes.preset.accent
                 });  library:apply_theme(items[ "fill" ], "accent", "BackgroundColor3");
-                items[ "fill" ]:SetAttribute("IsSliderFill", true)
                 
                 library:create( "UICorner" , {
                     Parent = items[ "fill" ];
-                    CornerRadius = dim(0, library.slider_corner)
+                    CornerRadius = dim(0, 999)
                 });
                 
                 items[ "circle" ] = library:create( "Frame" , {
@@ -1926,6 +1898,7 @@
                     Name = "\0";
                     Position = dim2(1, 0, 0.5, 0);
                     BorderColor3 = rgb(0, 0, 0);
+                    -- [MOBILE] Bigger knob
                     Size = is_mobile and dim2(0, 16, 0, 16) or dim2(0, 12, 0, 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(244, 244, 244)
@@ -1974,6 +1947,7 @@
                 cfg.callback(flags[cfg.flag])
             end
 
+            -- [MOBILE] unified press/release for both mouse and touch
             bind_press(items[ "slider" ], function(input)
                 cfg.dragging = true 
                 library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingStyle.Quad, 0.2)
@@ -2060,7 +2034,7 @@
                     
                     items[ "name" ] = library:create( "TextLabel" , {
                         FontFace = fonts.small;
-                        TextColor3 = themes.preset.font;
+                        TextColor3 = rgb(245, 245, 245);
                         BorderColor3 = rgb(0, 0, 0);
                         Text = "Dropdown";
                         Parent = items[ "dropdown_object" ];
@@ -2073,7 +2047,6 @@
                         TextSize = 16;
                         BackgroundColor3 = rgb(255, 255, 255)
                     });
-                    library:apply_theme(items[ "name" ], "font", "TextColor3")
                     
                     if cfg.info then 
                         items[ "info" ] = library:create( "TextLabel" , {
@@ -2129,6 +2102,7 @@
                         Parent = items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
+                        -- [MOBILE] taller dropdown button for finger
                         Size = is_mobile and dim2(0, cfg.width, 0, 24) or dim2(0, cfg.width, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -2242,6 +2216,7 @@
                 
                 library:create( "UIPadding" , {
                     Parent = button;
+                    -- [MOBILE] taller option rows
                     PaddingTop = dim(0, is_mobile and 6 or 1);
                     PaddingBottom = dim(0, is_mobile and 6 or 0);
                     PaddingRight = dim(0, 5);
@@ -2295,6 +2270,7 @@
                     cfg.y_size += button.AbsoluteSize.Y + 6
                     insert(cfg.option_instances, button)
                     
+                    -- [MOBILE] unified debounced click
                     bind_click(button, function()
                         if cfg.multi then 
                             local selected_index = find(cfg.multi_items, button.Text)
@@ -2316,6 +2292,7 @@
                 end
             end
 
+            -- [MOBILE] unified debounced click
             bind_click(items[ "dropdown" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -2370,7 +2347,7 @@
                 
                 items[ "name" ] = library:create( "TextLabel" , {
                     FontFace = fonts.small;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "label" ];
@@ -2383,7 +2360,6 @@
                     TextSize = 16;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "name" ], "font", "TextColor3")
 
                 if cfg.info then 
                     items[ "info" ] = library:create( "TextLabel" , {
@@ -2486,6 +2462,7 @@
                         Parent = label and label.items.right_components or self.items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
+                        -- [MOBILE] bigger swatch
                         Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -2525,12 +2502,12 @@
                         Name = "\0";
                         Position = dim2(0.20000000298023224, 20, 0.296999990940094, 0);
                         BorderColor3 = rgb(0, 0, 0);
+                        -- [MOBILE] slightly bigger picker card
                         Size = is_mobile and dim2(0, 210, 0, 240) or dim2(0, 166, 0, 197);
                         BorderSizePixel = 0;
                         Visible = true;
-                        BackgroundColor3 = themes.preset.main
+                        BackgroundColor3 = rgb(25, 25, 29)
                     });
-                    library:apply_theme(items[ "colorpicker_holder" ], "main", "BackgroundColor3")
 
                     items[ "colorpicker_fade" ] = library:create( "Frame" , {
                         Parent = items[ "colorpicker_holder" ];
@@ -2541,9 +2518,8 @@
                         Size = dim2(1, 0, 1, 0);
                         BorderSizePixel = 0;
                         ZIndex = 100;
-                        BackgroundColor3 = themes.preset.main
+                        BackgroundColor3 = rgb(25, 25, 29)
                     });
-                    library:apply_theme(items[ "colorpicker_fade" ], "main", "BackgroundColor3")
                     
                     items[ "colorpicker_components" ] = library:create( "Frame" , {
                         Parent = items[ "colorpicker_holder" ];
@@ -2626,6 +2602,7 @@
                         Parent = items[ "saturation_holder" ];
                         Name = "\0";
                         Position = dim2(0, 0, 4, 0);
+                        -- [MOBILE] bigger picker dot
                         Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
@@ -2648,6 +2625,7 @@
                         Name = "\0";
                         Position = dim2(0, 10, 1, -64);
                         BorderColor3 = rgb(0, 0, 0);
+                        -- [MOBILE] thicker hue bar
                         Size = is_mobile and dim2(1, -20, 0, 14) or dim2(1, -20, 0, 8);
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 255, 255);
@@ -2673,6 +2651,7 @@
                         Parent = items[ "hue_gradient" ];
                         Name = "\0";
                         Position = dim2(0, 0, 0.5, 0);
+                        -- [MOBILE] bigger hue knob
                         Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
@@ -2697,11 +2676,10 @@
                         BorderColor3 = rgb(0, 0, 0);
                         Size = is_mobile and dim2(1, -20, 0, 14) or dim2(1, -20, 0, 8);
                         BorderSizePixel = 0;
-                        BackgroundColor3 = themes.preset.main;
+                        BackgroundColor3 = rgb(25, 25, 29);
                         AutoButtonColor = false;
                         Text = "";
                     });
-                    library:apply_theme(items[ "alpha_gradient" ], "main", "BackgroundColor3")
                     
                     library:create( "UICorner" , {
                         Parent = items[ "alpha_gradient" ];
@@ -2871,11 +2849,13 @@
                 cfg.set()
             end
 
+            -- [MOBILE] unified debounced click for opening
             bind_click(items[ "colorpicker" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)            
             end)
 
+            -- [MOBILE] Drag handlers — mouse AND touch
             library:connection(uis.InputChanged, function(input)
                 if (dragging_sat or dragging_hue or dragging_alpha) and 
                    (input.UserInputType == Enum.UserInputType.MouseMovement 
@@ -2893,6 +2873,7 @@
                 end
             end)    
 
+            -- [MOBILE] start drag on press (works for mouse and touch)
             bind_press(items[ "alpha_gradient" ], function() dragging_alpha = true end)
             bind_press(items[ "hue_gradient" ], function() dragging_hue = true end)
             bind_press(items[ "sat" ], function() dragging_sat = true end)
@@ -2952,7 +2933,7 @@
                 
                 items[ "name" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "textbox" ];
@@ -2965,7 +2946,6 @@
                     TextSize = 16;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "name" ], "font", "TextColor3")
                 
                 library:create( "UIPadding" , {
                     Parent = items[ "name" ];
@@ -3007,6 +2987,7 @@
                     TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Position = dim2(1, 0, 0, 0);
+                    -- [MOBILE] taller input
                     Size = is_mobile and dim2(1, -4, 0, 34) or dim2(1, -4, 0, 30);
                     BackgroundColor3 = rgb(33, 33, 35)
                 }); 
@@ -3096,7 +3077,7 @@
                     
                     items[ "name" ] = library:create( "TextLabel" , {
                         FontFace = fonts.font;
-                        TextColor3 = themes.preset.font;
+                        TextColor3 = rgb(245, 245, 245);
                         BorderColor3 = rgb(0, 0, 0);
                         Text = cfg.name;
                         Parent = items[ "keybind_element" ];
@@ -3109,7 +3090,6 @@
                         TextSize = 16;
                         BackgroundColor3 = rgb(255, 255, 255)
                     });
-                    library:apply_theme(items[ "name" ], "font", "TextColor3")
                     
                     library:create( "UIPadding" , {
                         Parent = items[ "name" ];
@@ -3201,9 +3181,8 @@
                         ClipsDescendants = true;
                         BorderColor3 = rgb(0, 0, 0);
                         BorderSizePixel = 0;
-                        BackgroundColor3 = themes.preset.main
+                        BackgroundColor3 = rgb(22, 22, 24)
                     });
-                    library:apply_theme(items[ "inline" ], "main", "BackgroundColor3")
                     
                     library:create( "UIPadding" , {
                         PaddingBottom = dim(0, 6);
@@ -3254,6 +3233,7 @@
                             PaddingLeft = dim(0, 5)
                         });
 
+                        -- [MOBILE] unified debounced click
                         bind_click(name, function()
                             cfg.set(option)
                             cfg.set_visible(false)
@@ -3334,6 +3314,8 @@
                 items[ "dropdown" ].Position = dim_offset(items[ "keybind_holder" ].AbsolutePosition.X, items[ "keybind_holder" ].AbsolutePosition.Y + items[ "keybind_holder" ].AbsoluteSize.Y + 60)
             end
         
+            -- [MOBILE] press-to-bind on tap, long-press to open mode dropdown.
+            --          On desktop right-click still opens mode dropdown.
             local press_start = 0
             local long_press_fired = false
 
@@ -3343,6 +3325,7 @@
                     press_start = tick()
                     long_press_fired = false
 
+                    -- Long-press detector
                     task.spawn(function()
                         local start = press_start
                         task.wait(0.5)
@@ -3372,6 +3355,7 @@
                 press_start = 0
             end)
 
+            -- [MOBILE] Desktop right-click still available
             items[ "keybind_holder" ].MouseButton2Down:Connect(function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -3439,6 +3423,7 @@
                     Parent = items[ "button_element" ];
                     Name = "\0";
                     Position = dim2(1, -4, 0, 0);
+                    -- [MOBILE] taller button
                     Size = is_mobile and dim2(1, -8, 0, 38) or dim2(1, -8, 0, 30);
                     BorderSizePixel = 0;
                     TextSize = 14;
@@ -3452,7 +3437,7 @@
                 
                 items[ "name" ] = library:create( "TextLabel" , {
                     FontFace = fonts.small;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "button" ];
@@ -3463,14 +3448,14 @@
                     AutomaticSize = Enum.AutomaticSize.XY;
                     TextSize = 14;
                     BackgroundColor3 = rgb(255, 255, 255)
-                });
-                library:apply_theme(items[ "name" ], "font", "TextColor3")
+                }); library:apply_theme(items[ "name" ], "accent", "BackgroundColor3");                            
             end 
 
+            -- [MOBILE] unified debounced click
             bind_click(items[ "button" ], function()
                 cfg.callback()
                 items[ "name" ].TextColor3 = themes.preset.accent 
-                library:tween(items[ "name" ], {TextColor3 = themes.preset.font})
+                library:tween(items[ "name" ], {TextColor3 = rgb(245, 245, 245)})
             end)
             
             return setmetatable(cfg, library)
@@ -3493,9 +3478,8 @@
                     ClipsDescendants = true;
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
-                    BackgroundColor3 = themes.preset.main
+                    BackgroundColor3 = rgb(25, 25, 29)
                 });
-                library:apply_theme(items[ "outline" ], "main", "BackgroundColor3")
                 
                 items[ "inline" ] = library:create( "Frame" , {
                     Parent = items[ "outline" ];
@@ -3504,9 +3488,8 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Size = dim2(1, -2, 1, -2);
                     BorderSizePixel = 0;
-                    BackgroundColor3 = themes.preset.main
+                    BackgroundColor3 = rgb(22, 22, 24)
                 });
-                library:apply_theme(items[ "inline" ], "main", "BackgroundColor3")
                 
                 library:create( "UICorner" , {
                     Parent = items[ "inline" ];
@@ -3547,6 +3530,7 @@
                     AutoButtonColor = false;
                     Parent = self.items[ "right_components" ];
                     BorderColor3 = rgb(0, 0, 0);
+                    -- [MOBILE] bigger gear
                     Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
@@ -3559,6 +3543,7 @@
                 library:close_element(cfg)
             end
             
+            -- [MOBILE] unified debounced click
             bind_click(items[ "tick" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -3618,6 +3603,7 @@
                         Parent = items[ "list" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
+                        -- [MOBILE] taller rows
                         Size = is_mobile and dim2(1, 0, 0, 40) or dim2(1, 0, 0, 30);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -3644,6 +3630,7 @@
                         CornerRadius = dim(0, 3)
                     });     
 
+                    -- [MOBILE] unified debounced click
                     bind_click(button, function()
                         local current = cfg.current_element 
                         if current and current ~= name then 
@@ -3684,78 +3671,11 @@
             local column = main:column({})
             local section = column:section({name = "Settings", side = "right", size = 1, default = true, icon = "rbxassetid://129380150574313"})
             section:textbox({name = "Config name:", flag = "config_name_text"})
-            section:button({name = "Save", callback = function() 
-                local fname = (flags["config_name_text"] and flags["config_name_text"] ~= "") and flags["config_name_text"] or flags["config_name_list"]
-                writefile(library.directory .. "/configs/" .. fname .. ".cfg", library:get_config()) 
-                library:update_config_list() 
-                notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. tostring(fname)}) 
-            end}) 
-            section:button({name = "Load", callback = function() 
-                local fname = flags["config_name_list"]
-                library:load_config(readfile(library.directory .. "/configs/" .. fname .. ".cfg"))  
-                library:update_config_list() 
-                notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. tostring(fname)}) 
-            end})
-            section:button({name = "Delete", callback = function() 
-                local fname = flags["config_name_list"]
-                delfile(library.directory .. "/configs/" .. fname .. ".cfg")  
-                library:update_config_list() 
-                notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. tostring(fname)}) 
-            end})
+            section:button({name = "Save", callback = function() writefile(library.directory .. "/configs/" .. flags["config_name_text"] or flags["config_name_list"] .. ".cfg", library:get_config()) library:update_config_list() notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. flags["config_name_list"] or flags["config_name_text"]}) end}) 
+            section:button({name = "Load", callback = function() library:load_config(readfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg"))  library:update_config_list() notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. flags["config_name_list"]}) end})
+            section:button({name = "Delete", callback = function() delfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg")  library:update_config_list() notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. flags["config_name_list"]}) end})
+            section:colorpicker({name = "Menu Accent", callback = function(color, alpha) library:update_theme("accent", color) end, color = themes.preset.accent})
             section:keybind({name = "Menu Bind", callback = function(bool) window.toggle_menu(bool) end, default = true})
-
-            -- ============ THEME TAB ============
-            local theme_pages = window:tab({name = "Theme", icon = "rbxassetid://129380150574313", tabs = {"Colors", "Slider"}})
-            local colors_page = theme_pages[1]
-            local slider_page = theme_pages[2]
-
-            local col_a = colors_page:column({})
-            local sec_a = col_a:section({name = "Interface Colors", size = 1, default = true, icon = "rbxassetid://129380150574313"})
-            sec_a:colorpicker({name = "Accent",     color = themes.preset.accent,     callback = function(c) library:update_theme("accent", c)     end})
-            sec_a:colorpicker({name = "Background", color = themes.preset.background, callback = function(c) library:update_theme("background", c) end})
-            sec_a:colorpicker({name = "Main",       color = themes.preset.main,       callback = function(c) library:update_theme("main", c)       end})
-            sec_a:colorpicker({name = "Font",       color = themes.preset.font,       callback = function(c) library:update_theme("font", c)       end})
-            sec_a:colorpicker({name = "Shadow",     color = themes.preset.shadow,     callback = function(c) library:update_theme("shadow", c)     end})
-            sec_a:colorpicker({name = "Top Bar",    color = themes.preset.topbar,     callback = function(c) library:update_theme("topbar", c)     end})
-
-            local col_b = colors_page:column({})
-            local sec_b = col_b:section({name = "Preview", size = 1, default = true, icon = "rbxassetid://6022668898"})
-            sec_b:toggle({name = "Preview Toggle", default = true})
-            sec_b:slider({name = "Preview Slider", min = 0, max = 100, default = 50})
-            sec_b:button({name = "Preview Button", callback = function() end})
-
-            -- ============ SLIDER TAB ============
-            local col_c = slider_page:column({})
-            local sec_c = col_c:section({name = "Slider Appearance", size = 1, default = true, icon = "rbxassetid://129380150574313"})
-
-            sec_c:slider({
-                name = "Slider Corner",
-                min = 0, max = 999, default = library.slider_corner, interval = 1,
-                callback = function(v)
-                    library.slider_corner = v
-                    for _, d in library.items:GetDescendants() do
-                        if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") then
-                            local p = d.Parent
-                            if p:GetAttribute("IsSlider") or p:GetAttribute("IsSliderFill") then
-                                d.CornerRadius = dim(0, v)
-                            end
-                        end
-                    end
-                end
-            })
-
-            sec_c:slider({
-                name = "Slider Transparency",
-                min = 0, max = 1, default = library.slider_transparency, interval = 0.05,
-                callback = function(v)
-                    library.slider_transparency = v
-                    for _, d in library.items:GetDescendants() do
-                        if d:IsA("GuiObject") and d:GetAttribute("IsSlider") then
-                            d.BackgroundTransparency = v
-                        end
-                    end
-                end
-            })
         end
     --
 
@@ -3824,7 +3744,7 @@
                 
                 items[ "title" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
-                    TextColor3 = themes.preset.font;
+                    TextColor3 = rgb(255, 255, 255);
                     BorderColor3 = rgb(0, 0, 0);
                     Text = cfg.name;
                     Parent = items[ "notification" ];
@@ -3836,7 +3756,6 @@
                     TextSize = 14;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
-                library:apply_theme(items[ "title" ], "font", "TextColor3")
                 
                 library:create( "UICorner" , {
                     Parent = items[ "notification" ];
@@ -3876,7 +3795,7 @@
                     BackgroundTransparency = 1;
                     BorderSizePixel = 0;
                     BackgroundColor3 = themes.preset.accent
-                }); library:apply_theme(items[ "bar" ], "accent", "BackgroundColor3");
+                });
                 
                 library:create( "UICorner" , {
                     Parent = items[ "bar" ];
