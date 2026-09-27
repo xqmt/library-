@@ -5,8 +5,9 @@
     -> Kind of got bored idk what to do with life
     -> Idk who or why this got leaked, ui was VERY popular and high in demand with customers
 
-    -> [MOBILE] Patched for touch devices (Toggle UI button removed — create it in your script)
-    -> [MOBILE] Fixed double-toggle on mobile (removed duplicate TouchTap handlers)
+    -> [MOBILE] Full touch support: drag / resize / sliders / colorpicker / keybind / settings
+    -> [MOBILE] Unified debounced click helper (MouseButton1Click + TouchTap — no double-fire)
+    -> [MOBILE] Long-press on keybind opens the mode dropdown (replaces right-click)
 ]]
 
 -- Variables 
@@ -72,6 +73,41 @@
     local remove = table.remove
     local concat = table.concat
 -- 
+
+-- [MOBILE] Shared input helpers
+    -- Debounced activation helper: fires once regardless of MouseButton1Click + TouchTap duplicates
+    local function bind_click(gui, callback)
+        local last_fire = 0
+        local function fire(...)
+            local now = os.clock()
+            if now - last_fire < 0.2 then return end
+            last_fire = now
+            callback(...)
+        end
+        gui.MouseButton1Click:Connect(fire)
+        gui.TouchTap:Connect(fire)
+    end
+
+    -- Fires on press for both mouse-left and touch
+    local function bind_press(gui, callback)
+        gui.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 
+                or input.UserInputType == Enum.UserInputType.Touch then
+                callback(input)
+            end
+        end)
+    end
+
+    -- Fires on release for both mouse-left and touch
+    local function bind_release(gui, callback)
+        gui.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 
+                or input.UserInputType == Enum.UserInputType.Touch then
+                callback(input)
+            end
+        end)
+    end
+--
 
 -- Library init
     getgenv().library = {
@@ -155,6 +191,7 @@
         [Enum.UserInputType.MouseButton3] = "MB3",
         [Enum.KeyCode.Escape] = "ESC",
         [Enum.KeyCode.Space] = "SPC",
+        [Enum.UserInputType.Touch] = "TAP",
     }
         
     library.__index = library
@@ -215,15 +252,16 @@
     -- Misc functions
         function library:tween(obj, properties, easing_style, time) 
             local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties):Play()
-                
             return tween
         end
 
         function library:resizify(frame) 
             local Frame = Instance.new("TextButton")
-            Frame.Position = dim2(1, -10, 1, -10)
+            -- [MOBILE] Bigger touch target
+            local handle_size = is_mobile and 22 or 10
+            Frame.Position = dim2(1, -(handle_size + 2), 1, -(handle_size + 2))
             Frame.BorderColor3 = rgb(0, 0, 0)
-            Frame.Size = dim2(0, 10, 0, 10)
+            Frame.Size = dim2(0, handle_size, 0, handle_size)
             Frame.BorderSizePixel = 0
             Frame.BackgroundColor3 = rgb(255, 255, 255)
             Frame.Parent = frame
@@ -235,8 +273,10 @@
             local start 
             local og_size = frame.Size  
 
+            -- [MOBILE] Handle mouse AND touch
             Frame.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 
+                    or input.UserInputType == Enum.UserInputType.Touch then
                     resizing = true
                     start = input.Position
                     start_size = frame.Size
@@ -244,13 +284,15 @@
             end)
 
             Frame.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 
+                    or input.UserInputType == Enum.UserInputType.Touch then
                     resizing = false
                 end
             end)
 
             library:connection(uis.InputChanged, function(input, game_event) 
-                if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+                if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement 
+                    or input.UserInputType == Enum.UserInputType.Touch) then
                     local viewport_x = camera.ViewportSize.X
                     local viewport_y = camera.ViewportSize.Y
 
@@ -276,25 +318,19 @@
 
         function fag(tbl)
             local Size = 0
-            
-            for _ in tbl do
-                Size = Size + 1
-            end
-        
+            for _ in tbl do Size = Size + 1 end
             return Size
         end
         
         function library:next_flag()
             local index = fag(library.flags) + 1;
             local str = string.format("flagnumber%s", index)
-            
             return str;
         end 
 
         function library:mouse_in_frame(uiobject)
             local y_cond = uiobject.AbsolutePosition.Y <= mouse.Y and mouse.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
             local x_cond = uiobject.AbsolutePosition.X <= mouse.X and mouse.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
-
             return (y_cond and x_cond)
         end
 
@@ -348,11 +384,9 @@
 
         function library:convert(str)
             local values = {}
-
             for value in string.gmatch(str, "[^,]+") do
                 insert(values, tonumber(value))
             end
-            
             if #values == 4 then              
                 return unpack(values)
             else 
@@ -362,40 +396,30 @@
         
         function library:convert_enum(enum)
             local enum_parts = {}
-        
             for part in string.gmatch(enum, "[%w_]+") do
                 insert(enum_parts, part)
             end
-        
             local enum_table = Enum
             for i = 2, #enum_parts do
                 local enum_item = enum_table[enum_parts[i]]
-        
                 enum_table = enum_item
             end
-        
             return enum_table
         end
 
         local config_holder;
         function library:update_config_list() 
-            if not config_holder then 
-                return 
-            end
-            
+            if not config_holder then return end
             local list = {}
-            
             for idx, file in listfiles(library.directory .. "/configs") do
                 local name = file:gsub(library.directory .. "/configs\\", ""):gsub(".cfg", ""):gsub(library.directory .. "\\configs\\", "")
                 list[#list + 1] = name
             end
-
             config_holder.refresh_options(list)
         end 
 
         function library:get_config()
             local Config = {}
-            
             for _, v in next, flags do
                 if type(v) == "table" and v.key then
                     Config[_] = {active = v.active, mode = v.mode, key = tostring(v.key)}
@@ -405,20 +429,14 @@
                     Config[_] = v
                 end
             end 
-            
             return http_service:JSONEncode(Config)
         end
 
         function library:load_config(config_json) 
             local config = http_service:JSONDecode(config_json)
-            
             for _, v in config do 
                 local function_set = library.config_flags[_]
-                
-                if _ == "config_name_list" then 
-                    continue 
-                end
-
+                if _ == "config_name_list" then continue end
                 if function_set then 
                     if type(v) == "table" and v["Transparency"] and v["Color"] then
                         function_set(hex(v["Color"]), v["Transparency"])
@@ -433,7 +451,6 @@
         
         function library:round(number, float) 
             local multiplier = 1 / (float or 1)
-
             return floor(number * multiplier + 0.5) / multiplier
         end 
 
@@ -443,62 +460,47 @@
 
         function library:update_theme(theme, color)
             for _, property in themes.utility[theme] do 
-
                 for m, object in property do 
                     if object[_] == themes.preset[theme] then 
                         object[_] = color 
                     end 
                 end 
             end 
-
             themes.preset[theme] = color 
         end 
 
         function library:connection(signal, callback)
             local connection = signal:Connect(callback)
-            
             insert(library.connections, connection)
-
             return connection 
         end
 
         function library:close_element(new_path) 
             local open_element = library.current_open
-
             if open_element and new_path ~= open_element then
                 open_element.set_visible(false)
                 open_element.open = false;
             end 
-
             if new_path ~= open_element then 
                 library.current_open = new_path or nil;
-            end
+            end 
         end 
 
         function library:create(instance, options)
             local ins = Instance.new(instance) 
-            
             for prop, value in options do 
                 ins[prop] = value
             end
-            
             return ins 
         end
 
         function library:unload_menu() 
-            if library[ "items" ] then 
-                library[ "items" ]:Destroy()
-            end
-
-            if library[ "other" ] then 
-                library[ "other" ]:Destroy()
-            end 
-            
+            if library[ "items" ] then library[ "items" ]:Destroy() end
+            if library[ "other" ] then library[ "other" ]:Destroy() end 
             for index, connection in library.connections do 
                 connection:Disconnect() 
                 connection = nil 
             end
-            
             library = nil 
         end 
     --
@@ -520,7 +522,6 @@
                 size = properties.size or properties.Size or default_size;
                 selected_tab;
                 items = {};
-
                 tween;
             }
             
@@ -760,11 +761,9 @@
             local cfg = {
                 name = properties.name or properties.Name or "visuals"; 
                 icon = properties.icon or properties.Icon or "http://www.roblox.com/asset/?id=6034767608";
-                
                 tabs = properties.tabs or properties.Tabs or {"Main", "Misc.", "Settings"};
                 pages = {}; 
                 current_multi; 
-                
                 items = {};
             } 
 
@@ -795,7 +794,7 @@
                         AutoButtonColor = false;
                         BackgroundTransparency = 1;
                         Name = "\0";
-                        Size = dim2(1, 0, 0, 35);
+                        Size = dim2(1, 0, 0, is_mobile and 42 or 35);
                         BorderSizePixel = 0;
                         TextSize = 16;
                         BackgroundColor3 = rgb(29, 29, 29)
@@ -891,7 +890,7 @@
                                     Text = "";
                                     Parent = items[ "multi_section_button_holder" ];
                                     Name = "\0";
-                                    Size = dim2(0, 0, 0, 39);
+                                    Size = dim2(0, 0, 0, is_mobile and 42 or 39);
                                     BackgroundTransparency = 1;
                                     ClipsDescendants = true;
                                     BorderSizePixel = 0;
@@ -1021,12 +1020,9 @@
                             library:close_element()
                         end
 
-                        multi_items[ "button" ].MouseButton1Down:Connect(function()
+                        -- [MOBILE] unified debounced click
+                        bind_click(multi_items[ "button" ], function()
                             data.open_page() 
-                        end)
-                        -- [MOBILE] touch
-                        multi_items[ "button" ].TouchTap:Connect(function()
-                            data.open_page()
                         end)
 
                         cfg.pages[#cfg.pages + 1] = setmetatable(data, library)
@@ -1079,11 +1075,8 @@
                 library:close_element()
             end
 
-            items[ "button" ].MouseButton1Down:Connect(function()
-                cfg.open_tab()
-            end)
-            -- [MOBILE] touch
-            items[ "button" ].TouchTap:Connect(function()
+            -- [MOBILE] unified debounced click
+            bind_click(items[ "button" ], function()
                 cfg.open_tab()
             end)
             
@@ -1231,7 +1224,8 @@
                     ScrollBarImageColor3 = rgb(44, 44, 46);
                     Active = true;
                     AutomaticCanvasSize = Enum.AutomaticSize.Y;
-                    ScrollBarThickness = 2;
+                    -- [MOBILE] Thicker scrollbar for fingers
+                    ScrollBarThickness = is_mobile and 4 or 2;
                     Parent = items[ "inline" ];
                     Name = "\0";
                     Size = dim2(1, 0, 1, -40);
@@ -1415,14 +1409,10 @@
             end;
 
             if cfg.fading_toggle then
-                items[ "button" ].MouseButton1Click:Connect(function()
+                -- [MOBILE] unified debounced click (handles both mouse + touch)
+                bind_click(items[ "button" ], function()
                     cfg.default = not cfg.default 
                     cfg.toggle_section(cfg.default) 
-                end)
-                -- [MOBILE] touch (only one handler to avoid double-toggle)
-                items[ "button" ].TouchTap:Connect(function()
-                    cfg.default = not cfg.default 
-                    cfg.toggle_section(cfg.default)
                 end)
 
                 function cfg.toggle_section(bool)
@@ -1465,7 +1455,8 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
-                    Size = dim2(1, 0, 0, 0);
+                    -- [MOBILE] taller row for finger
+                    Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
                     TextSize = 14;
@@ -1545,7 +1536,8 @@
                             Parent = items[ "right_components" ];
                             Name = "\0";
                             Position = dim2(1, 0, 0, 0);
-                            Size = dim2(0, 16, 0, 16);
+                            -- [MOBILE] slightly bigger checkbox
+                            Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                             BorderSizePixel = 0;
                             TextSize = 14;
                             BackgroundColor3 = rgb(67, 67, 68)
@@ -1671,22 +1663,22 @@
                 flags[cfg.flag] = bool
             end 
             
-            items[ "toggle" ].MouseButton1Click:Connect(function()
-                cfg.enabled = not cfg.enabled 
-                cfg.set(cfg.enabled)
-            end)
-            -- [MOBILE] touch (only ONE handler — on the row — to avoid double-toggle)
-            items[ "toggle" ].TouchTap:Connect(function()
+            -- [MOBILE] unified debounced click — one handler on the row.
+            --          The toggle_button is a child of the row; on touch devices the row's
+            --          TouchTap will already fire, so we do NOT attach another handler to
+            --          toggle_button (avoids the double-toggle issue).
+            bind_click(items[ "toggle" ], function()
                 cfg.enabled = not cfg.enabled 
                 cfg.set(cfg.enabled)
             end)
 
-            items[ "toggle_button" ].MouseButton1Click:Connect(function()
-                cfg.enabled = not cfg.enabled 
-                cfg.set(cfg.enabled)
-            end)
-            -- NOTE: deliberately NO TouchTap on toggle_button — it would double-fire
-            --       with the row's TouchTap when the user taps the switch itself.
+            -- Desktop also needs the switch itself clickable (mouse users expect it).
+            if not is_mobile then
+                items[ "toggle_button" ].MouseButton1Click:Connect(function()
+                    cfg.enabled = not cfg.enabled 
+                    cfg.set(cfg.enabled)
+                end)
+            end
             
             if cfg.seperator then
                 library:create( "Frame" , {
@@ -1701,7 +1693,6 @@
             end
 
             cfg.set(cfg.default)
-
             config_flags[cfg.flag] = cfg.set
 
             return setmetatable(cfg, library)
@@ -1737,7 +1728,8 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
-                    Size = dim2(1, 0, 0, 0);
+                    -- [MOBILE] Taller slider row for finger hit
+                    Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
                     TextSize = 14;
@@ -1792,7 +1784,8 @@
                     BackgroundTransparency = 1;
                     Position = dim2(0, 4, 0, 23);
                     BorderColor3 = rgb(0, 0, 0);
-                    Size = dim2(1, 0, 0, 12);
+                    -- [MOBILE] Taller slider bar area
+                    Size = dim2(1, 0, 0, is_mobile and 16 or 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });
@@ -1814,7 +1807,8 @@
                     Parent = items[ "right_components" ];
                     Name = "\0";
                     Position = dim2(1, 0, 0, 0);
-                    Size = dim2(1, -4, 0, 4);
+                    -- [MOBILE] Thicker bar for finger
+                    Size = is_mobile and dim2(1, -4, 0, 6) or dim2(1, -4, 0, 4);
                     BorderSizePixel = 0;
                     TextSize = 14;
                     BackgroundColor3 = rgb(33, 33, 35)
@@ -1829,7 +1823,7 @@
                     Name = "\0";
                     Parent = items[ "slider" ];
                     BorderColor3 = rgb(0, 0, 0);
-                    Size = dim2(0.5, 0, 0, 4);
+                    Size = dim2(0.5, 0, 1, 0);
                     BorderSizePixel = 0;
                     BackgroundColor3 = themes.preset.accent
                 });  library:apply_theme(items[ "fill" ], "accent", "BackgroundColor3");
@@ -1845,7 +1839,8 @@
                     Name = "\0";
                     Position = dim2(1, 0, 0.5, 0);
                     BorderColor3 = rgb(0, 0, 0);
-                    Size = dim2(0, 12, 0, 12);
+                    -- [MOBILE] Bigger knob
+                    Size = is_mobile and dim2(0, 16, 0, 16) or dim2(0, 12, 0, 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(244, 244, 244)
                 });
@@ -1886,27 +1881,20 @@
 
             function cfg.set(value)
                 cfg.value = clamp(library:round(value, cfg.intervals), cfg.min, cfg.max)
-
-                library:tween(items[ "fill" ], {Size = dim2((cfg.value - cfg.min) / (cfg.max - cfg.min), cfg.value == cfg.min and 0 or -4, 0, 2)}, Enum.EasingStyle.Linear, 0.05)
+                local fill_y = items[ "slider" ].AbsoluteSize.Y - (is_mobile and 10 or 8)
+                library:tween(items[ "fill" ], {Size = dim2((cfg.value - cfg.min) / (cfg.max - cfg.min), cfg.value == cfg.min and 0 or -4, 1, 0)}, Enum.EasingStyle.Linear, 0.05)
                 items[ "value" ].Text = tostring(cfg.value) .. cfg.suffix
-
                 flags[cfg.flag] = cfg.value
                 cfg.callback(flags[cfg.flag])
             end
 
-            items[ "slider" ].MouseButton1Down:Connect(function()
+            -- [MOBILE] unified press/release for both mouse and touch
+            bind_press(items[ "slider" ], function(input)
                 cfg.dragging = true 
                 library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingStyle.Quad, 0.2)
-            end)
-            -- [MOBILE] touch
-            items[ "slider" ].InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    cfg.dragging = true
-                    library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingStyle.Quad, 0.2)
-                    local size_x = clamp((input.Position.X - items[ "slider" ].AbsolutePosition.X) / items[ "slider" ].AbsoluteSize.X, 0, 1)
-                    local value = ((cfg.max - cfg.min) * size_x) + cfg.min
-                    cfg.set(value)
-                end
+                local size_x = clamp((input.Position.X - items[ "slider" ].AbsolutePosition.X) / items[ "slider" ].AbsoluteSize.X, 0, 1)
+                local value = ((cfg.max - cfg.min) * size_x) + cfg.min
+                cfg.set(value)
             end)
 
             library:connection(uis.InputChanged, function(input)
@@ -1954,7 +1942,7 @@
                 multi = options.multi or false;
                 scrolling = options.scrolling or false;
 
-                width = options.width or 130;
+                width = options.width or (is_mobile and 100 or 130);
 
                 open = false;
                 option_instances = {};
@@ -2055,7 +2043,8 @@
                         Parent = items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        Size = dim2(0, cfg.width, 0, 16);
+                        -- [MOBILE] taller dropdown button for finger
+                        Size = is_mobile and dim2(0, cfg.width, 0, 24) or dim2(0, cfg.width, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
                         BackgroundColor3 = rgb(33, 33, 35)
@@ -2168,7 +2157,9 @@
                 
                 library:create( "UIPadding" , {
                     Parent = button;
-                    PaddingTop = dim(0, 1);
+                    -- [MOBILE] taller option rows
+                    PaddingTop = dim(0, is_mobile and 6 or 1);
+                    PaddingBottom = dim(0, is_mobile and 6 or 0);
                     PaddingRight = dim(0, 5);
                     PaddingLeft = dim(0, 5)
                 });
@@ -2220,26 +2211,8 @@
                     cfg.y_size += button.AbsoluteSize.Y + 6
                     insert(cfg.option_instances, button)
                     
-                    button.MouseButton1Down:Connect(function()
-                        if cfg.multi then 
-                            local selected_index = find(cfg.multi_items, button.Text)
-                            
-                            if selected_index then 
-                                remove(cfg.multi_items, selected_index)
-                            else
-                                insert(cfg.multi_items, button.Text)
-                            end
-                            
-                            cfg.set(cfg.multi_items) 				
-                        else 
-                            cfg.set_visible(false)
-                            cfg.open = false 
-                            
-                            cfg.set(button.Text)
-                        end
-                    end)
-                    -- [MOBILE] touch
-                    button.TouchTap:Connect(function()
+                    -- [MOBILE] unified debounced click
+                    bind_click(button, function()
                         if cfg.multi then 
                             local selected_index = find(cfg.multi_items, button.Text)
                             
@@ -2260,13 +2233,8 @@
                 end
             end
 
-            items[ "dropdown" ].MouseButton1Click:Connect(function()
-                cfg.open = not cfg.open 
-                
-                cfg.set_visible(cfg.open)
-            end)
-            -- [MOBILE] touch
-            items[ "dropdown" ].TouchTap:Connect(function()
+            -- [MOBILE] unified debounced click
+            bind_click(items[ "dropdown" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
             end)
@@ -2435,7 +2403,8 @@
                         Parent = label and label.items.right_components or self.items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        Size = dim2(0, 16, 0, 16);
+                        -- [MOBILE] bigger swatch
+                        Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
                         BackgroundColor3 = rgb(54, 31, 184)
@@ -2474,7 +2443,8 @@
                         Name = "\0";
                         Position = dim2(0.20000000298023224, 20, 0.296999990940094, 0);
                         BorderColor3 = rgb(0, 0, 0);
-                        Size = dim2(0, 166, 0, 197);
+                        -- [MOBILE] slightly bigger picker card
+                        Size = is_mobile and dim2(0, 210, 0, 240) or dim2(0, 166, 0, 197);
                         BorderSizePixel = 0;
                         Visible = true;
                         BackgroundColor3 = rgb(25, 25, 29)
@@ -2573,7 +2543,8 @@
                         Parent = items[ "saturation_holder" ];
                         Name = "\0";
                         Position = dim2(0, 0, 4, 0);
-                        Size = dim2(0, 8, 0, 8);
+                        -- [MOBILE] bigger picker dot
+                        Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 0, 0)
@@ -2595,7 +2566,8 @@
                         Name = "\0";
                         Position = dim2(0, 10, 1, -64);
                         BorderColor3 = rgb(0, 0, 0);
-                        Size = dim2(1, -20, 0, 8);
+                        -- [MOBILE] thicker hue bar
+                        Size = is_mobile and dim2(1, -20, 0, 14) or dim2(1, -20, 0, 8);
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 255, 255);
                         AutoButtonColor = false;
@@ -2620,7 +2592,8 @@
                         Parent = items[ "hue_gradient" ];
                         Name = "\0";
                         Position = dim2(0, 0, 0.5, 0);
-                        Size = dim2(0, 8, 0, 8);
+                        -- [MOBILE] bigger hue knob
+                        Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 0, 0)
@@ -2642,7 +2615,7 @@
                         Name = "\0";
                         Position = dim2(0, 10, 1, -46);
                         BorderColor3 = rgb(0, 0, 0);
-                        Size = dim2(1, -20, 0, 8);
+                        Size = is_mobile and dim2(1, -20, 0, 14) or dim2(1, -20, 0, 8);
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(25, 25, 29);
                         AutoButtonColor = false;
@@ -2662,7 +2635,7 @@
                         Parent = items[ "alpha_gradient" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0.5, 0);
-                        Size = dim2(0, 8, 0, 8);
+                        Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 0, 0)
@@ -2817,41 +2790,34 @@
                 cfg.set()
             end
 
-            items[ "colorpicker" ].MouseButton1Click:Connect(function()
+            -- [MOBILE] unified debounced click for opening
+            bind_click(items[ "colorpicker" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)            
             end)
-            -- [MOBILE] touch
-            items[ "colorpicker" ].TouchTap:Connect(function()
-                cfg.open = not cfg.open 
-                cfg.set_visible(cfg.open)
-            end)
 
-            uis.InputChanged:Connect(function(input)
-                if (dragging_sat or dragging_hue or dragging_alpha) and input.UserInputType == Enum.UserInputType.MouseMovement then
+            -- [MOBILE] Drag handlers — mouse AND touch
+            library:connection(uis.InputChanged, function(input)
+                if (dragging_sat or dragging_hue or dragging_alpha) and 
+                   (input.UserInputType == Enum.UserInputType.MouseMovement 
+                    or input.UserInputType == Enum.UserInputType.Touch) then
                     cfg.update_color() 
                 end
             end)
 
             library:connection(uis.InputEnded, function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if input.UserInputType == Enum.UserInputType.MouseButton1 
+                    or input.UserInputType == Enum.UserInputType.Touch then
                     dragging_sat = false
                     dragging_hue = false
                     dragging_alpha = false
                 end
             end)    
 
-            items[ "alpha_gradient" ].MouseButton1Down:Connect(function()
-                dragging_alpha = true 
-            end)
-            
-            items[ "hue_gradient" ].MouseButton1Down:Connect(function()
-                dragging_hue = true 
-            end)
-            
-            items[ "sat" ].MouseButton1Down:Connect(function()
-                dragging_sat = true  
-            end)
+            -- [MOBILE] start drag on press (works for mouse and touch)
+            bind_press(items[ "alpha_gradient" ], function() dragging_alpha = true end)
+            bind_press(items[ "hue_gradient" ], function() dragging_hue = true end)
+            bind_press(items[ "sat" ], function() dragging_sat = true end)
 
             items[ "input" ].FocusLost:Connect(function()
                 local text = items[ "input" ].Text
@@ -2953,15 +2919,17 @@
                     Name = "\0";
                     TextTruncate = Enum.TextTruncate.AtEnd;
                     BorderSizePixel = 0;
-                    PlaceholderColor3 = rgb(255, 255, 255);
+                    PlaceholderText = cfg.placeholder;
+                    PlaceholderColor3 = rgb(86, 86, 87);
                     CursorPosition = -1;
                     ClearTextOnFocus = false;
                     TextSize = 14;
                     BackgroundColor3 = rgb(255, 255, 255);
-                    TextColor3 = rgb(72, 72, 72);
+                    TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Position = dim2(1, 0, 0, 0);
-                    Size = dim2(1, -4, 0, 30);
+                    -- [MOBILE] taller input
+                    Size = is_mobile and dim2(1, -4, 0, 34) or dim2(1, -4, 0, 30);
                     BackgroundColor3 = rgb(33, 33, 35)
                 }); 
 
@@ -2979,14 +2947,15 @@
             
             function cfg.set(text) 
                 flags[cfg.flag] = text
-
-                items[ "input" ].Text = text
-
+                if items[ "input" ].Text ~= text then
+                    items[ "input" ].Text = text
+                end
                 cfg.callback(text)
             end 
             
             items[ "input" ]:GetPropertyChangedSignal("Text"):Connect(function()
-                cfg.set(items[ "input" ].Text) 
+                flags[cfg.flag] = items[ "input" ].Text
+                cfg.callback(items[ "input" ].Text) 
             end)
 
             items[ "input" ].Focused:Connect(function()
@@ -3195,22 +3164,18 @@
                         }); cfg.hold_instances[option] = name
                         library:apply_theme(name, "accent", "TextColor3")
                         
-                        cfg.y_size += name.AbsoluteSize.Y
+                        cfg.y_size += name.AbsoluteSize.Y + (is_mobile and 14 or 0)
 
                         library:create( "UIPadding" , {
                             Parent = name;
-                            PaddingTop = dim(0, 1);
+                            PaddingTop = dim(0, is_mobile and 4 or 1);
+                            PaddingBottom = dim(0, is_mobile and 4 or 0);
                             PaddingRight = dim(0, 5);
                             PaddingLeft = dim(0, 5)
                         });
 
-                        name.MouseButton1Click:Connect(function()
-                            cfg.set(option)
-                            cfg.set_visible(false)
-                            cfg.open = false
-                        end)
-                        -- [MOBILE]
-                        name.TouchTap:Connect(function()
+                        -- [MOBILE] unified debounced click
+                        bind_click(name, function()
                             cfg.set(option)
                             cfg.set_visible(false)
                             cfg.open = false
@@ -3223,7 +3188,6 @@
                 for _, v in cfg.hold_instances do 
                     v.TextColor3 = rgb(72, 72, 72)
                 end 
-
                 cfg.hold_instances[path].TextColor3 = themes.preset.accent
             end
 
@@ -3249,13 +3213,11 @@
                     end
                 elseif tostring(input):find("Enum") then 
                     input = input.Name == "Escape" and "NONE" or input
-                    
                     cfg.key = input or "NONE"	
                 elseif find({"Toggle", "Hold", "Always"}, input) then 
                     if input == "Always" then 
                         cfg.active = true 
                     end 
-
                     cfg.mode = input
                     cfg.set_mode(cfg.mode) 
                 elseif type(input) == "table" then 
@@ -3293,21 +3255,50 @@
                 items[ "dropdown" ].Position = dim_offset(items[ "keybind_holder" ].AbsolutePosition.X, items[ "keybind_holder" ].AbsolutePosition.Y + items[ "keybind_holder" ].AbsoluteSize.Y + 60)
             end
         
-            items[ "keybind_holder" ].MouseButton1Down:Connect(function()
-                task.wait()
-                items[ "key" ].Text = "..."	
+            -- [MOBILE] press-to-bind on tap, long-press to open mode dropdown.
+            --          On desktop right-click still opens mode dropdown.
+            local press_start = 0
+            local long_press_fired = false
 
-                cfg.binding = library:connection(uis.InputBegan, function(keycode, game_event)  
-                    cfg.set(keycode.KeyCode ~= Enum.KeyCode.Unknown and keycode.KeyCode or keycode.UserInputType)
-                    
-                    cfg.binding:Disconnect() 
-                    cfg.binding = nil
-                end)
+            items[ "keybind_holder" ].InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 
+                    or input.UserInputType == Enum.UserInputType.Touch then
+                    press_start = tick()
+                    long_press_fired = false
+
+                    -- Long-press detector
+                    task.spawn(function()
+                        local start = press_start
+                        task.wait(0.5)
+                        if start == press_start and not long_press_fired and tick() - press_start >= 0.5 then
+                            long_press_fired = true
+                            cfg.open = not cfg.open
+                            cfg.set_visible(cfg.open)
+                        end
+                    end)
+                end
             end)
 
+            items[ "keybind_holder" ].InputEnded:Connect(function(input)
+                if (input.UserInputType == Enum.UserInputType.MouseButton1 
+                    or input.UserInputType == Enum.UserInputType.Touch) 
+                    and not long_press_fired then
+                    task.wait()
+                    items[ "key" ].Text = "..."	
+
+                    cfg.binding = library:connection(uis.InputBegan, function(keycode, game_event)  
+                        cfg.set(keycode.KeyCode ~= Enum.KeyCode.Unknown and keycode.KeyCode or keycode.UserInputType)
+                        
+                        cfg.binding:Disconnect() 
+                        cfg.binding = nil
+                    end)
+                end
+                press_start = 0
+            end)
+
+            -- [MOBILE] Desktop right-click still available
             items[ "keybind_holder" ].MouseButton2Down:Connect(function()
                 cfg.open = not cfg.open 
-
                 cfg.set_visible(cfg.open)
             end)
 
@@ -3327,9 +3318,7 @@
             end)    
 
             library:connection(uis.InputEnded, function(input, game_event) 
-                if game_event then 
-                    return 
-                end 
+                if game_event then return end 
 
                 local selected_key = input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType
     
@@ -3375,7 +3364,8 @@
                     Parent = items[ "button_element" ];
                     Name = "\0";
                     Position = dim2(1, -4, 0, 0);
-                    Size = dim2(1, -8, 0, 30);
+                    -- [MOBILE] taller button
+                    Size = is_mobile and dim2(1, -8, 0, 38) or dim2(1, -8, 0, 30);
                     BorderSizePixel = 0;
                     TextSize = 14;
                     BackgroundColor3 = rgb(33, 33, 35)
@@ -3402,15 +3392,10 @@
                 }); library:apply_theme(items[ "name" ], "accent", "BackgroundColor3");                            
             end 
 
-            items[ "button" ].MouseButton1Click:Connect(function()
+            -- [MOBILE] unified debounced click
+            bind_click(items[ "button" ], function()
                 cfg.callback()
                 items[ "name" ].TextColor3 = themes.preset.accent 
-                library:tween(items[ "name" ], {TextColor3 = rgb(245, 245, 245)})
-            end)
-            -- [MOBILE] touch
-            items[ "button" ].TouchTap:Connect(function()
-                cfg.callback()
-                items[ "name" ].TextColor3 = themes.preset.accent
                 library:tween(items[ "name" ], {TextColor3 = rgb(245, 245, 245)})
             end)
             
@@ -3480,18 +3465,14 @@
                     CornerRadius = dim(0, 7)
                 });
                 
-                library:create( "UICorner" , {
-                    Parent = items[ "fade" ];
-                    CornerRadius = dim(0, 7)
-                });
-                
                 items[ "tick" ] = library:create( "ImageButton" , {
                     Image = "rbxassetid://128797200442698";
                     Name = "\0";
                     AutoButtonColor = false;
                     Parent = self.items[ "right_components" ];
                     BorderColor3 = rgb(0, 0, 0);
-                    Size = dim2(0, 16, 0, 16);
+                    -- [MOBILE] bigger gear
+                    Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
                 });                
@@ -3503,8 +3484,8 @@
                 library:close_element(cfg)
             end
             
-            -- Only ONE handler — Tap fires both MouseButton1Click and TouchTap on mobile if duplicated
-            items[ "tick" ].MouseButton1Click:Connect(function()
+            -- [MOBILE] unified debounced click
+            bind_click(items[ "tick" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
             end)
@@ -3563,7 +3544,8 @@
                         Parent = items[ "list" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        Size = dim2(1, 0, 0, 30);
+                        -- [MOBILE] taller rows
+                        Size = is_mobile and dim2(1, 0, 0, 40) or dim2(1, 0, 0, 30);
                         BorderSizePixel = 0;
                         TextSize = 14;
                         BackgroundColor3 = rgb(33, 33, 35)
@@ -3589,19 +3571,8 @@
                         CornerRadius = dim(0, 3)
                     });     
 
-                    button.MouseButton1Click:Connect(function()
-                        local current = cfg.current_element 
-                        if current and current ~= name then 
-                            library:tween(current, {TextColor3 = rgb(72, 72, 72)})
-                        end
-
-                        flags[cfg.flag] = option_data
-                        cfg.callback(option_data)
-                        library:tween(name, {TextColor3 = rgb(245, 245, 245)})
-                        cfg.current_element = name
-                    end)
-                    -- [MOBILE]
-                    button.TouchTap:Connect(function()
+                    -- [MOBILE] unified debounced click
+                    bind_click(button, function()
                         local current = cfg.current_element 
                         if current and current ~= name then 
                             library:tween(current, {TextColor3 = rgb(72, 72, 72)})
@@ -3614,18 +3585,12 @@
                     end)
 
                     name.MouseEnter:Connect(function()
-                        if cfg.current_element == name then 
-                            return 
-                        end 
-
+                        if cfg.current_element == name then return end 
                         library:tween(name, {TextColor3 = rgb(140, 140, 140)})
                     end)
 
                     name.MouseLeave:Connect(function()
-                        if cfg.current_element == name then 
-                            return 
-                        end 
-
+                        if cfg.current_element == name then return end 
                         library:tween(name, {TextColor3 = rgb(72, 72, 72)})
                     end)
                 end
@@ -3678,7 +3643,6 @@
                     if instance:IsA("UIStroke") then
                         library:tween(instance, {Transparency = fading}, Enum.EasingStyle.Quad, 1)
                     end
-        
                     continue
                 end 
         
