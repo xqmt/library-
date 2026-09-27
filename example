@@ -8,10 +8,10 @@ local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xqmt/
   Also I haven't even got a clue how this got leaked since loads of people had it.
 ]]
 
-local window = library:window({name = "nebula", suffix = "tech", gameInfo = "Milenium for Counter-Strike: Global Offensive"})
+local window = library:window({name = "fatality", suffix = "", gameInfo = "universal"})
 
 window:seperator({name = "General"})
-local enemies, teammates, self_section = window:tab({name = "Example", tabs = {"Enemies", "Teammates", "Self"}})
+local enemies, teammates, self_section = window:tab({name = "example", tabs = {"Enemies", "Teammates", "Self"}})
 for _,tab in {enemies, teammates, self_section} do 
     local column = tab:column({})
     local section = column:section({name = "General", default = true, toggle = false})
