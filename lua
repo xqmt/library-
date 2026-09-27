@@ -9,8 +9,9 @@
     -> [MOBILE] Unified debounced click helper (MouseButton1Click + TouchTap — no double-fire)
     -> [MOBILE] Long-press on keybind opens the mode dropdown (replaces right-click)
     -> [MOBILE] UI scale auto-fit for ~720p screens
-    -> [MOBILE] Floating toggle button to open/close menu
+    -> [MOBILE] Floating toggle button to open/close menu (HORIZONTAL pill)
     -> [THEME] Hub name gradient + Theme tab (background / main / text / shadow / gradient / corner / transparency / top bar / text size)
+    -> [THEME] Main Background แยก 2 ที่ (Main Frame + Side Frame)
 ]]
 
 -- Variables 
@@ -268,9 +269,10 @@
             return tween
         end
 
+        -- [MOBILE] Resizable ใช้ง่ายขึ้นบนมือถือ: handle ใหญ่ขึ้น + ไอคอนบอกชัดเจน + feedback
         function library:resizify(frame) 
+            local handle_size = is_mobile and 40 or 14
             local Frame = Instance.new("TextButton")
-            local handle_size = is_mobile and 22 or 10
             Frame.Position = dim2(1, -(handle_size + 2), 1, -(handle_size + 2))
             Frame.BorderColor3 = rgb(0, 0, 0)
             Frame.Size = dim2(0, handle_size, 0, handle_size)
@@ -279,11 +281,32 @@
             Frame.Parent = frame
             Frame.BackgroundTransparency = 1 
             Frame.Text = ""
+            Frame.ZIndex = 50
+            Frame.AutoButtonColor = false
+
+            -- [MOBILE] ไอคอนมุมมองเห็นชัดว่าเป็น handle resize
+            local icon = Instance.new("ImageLabel")
+            icon.Parent = Frame
+            icon.Name = "\0"
+            icon.BackgroundTransparency = 1
+            icon.Image = "rbxassetid://100810221637533" -- resize corner icon
+            icon.ImageColor3 = is_mobile and rgb(180, 180, 190) or rgb(120, 120, 130)
+            icon.ImageTransparency = is_mobile and 0.35 or 0.6
+            icon.Size = dim2(1, is_mobile and -8 or -2, 1, is_mobile and -8 or -2)
+            icon.Position = dim2(0, is_mobile and 4 or 1, 0, is_mobile and 4 or 1)
+            icon.ZIndex = 51
 
             local resizing = false 
             local start_size 
             local start 
             local og_size = frame.Size  
+
+            local function set_icon_active(active)
+                library:tween(icon, {
+                    ImageColor3 = active and themes.preset.accent or (is_mobile and rgb(180, 180, 190) or rgb(120, 120, 130)),
+                    ImageTransparency = active and 0 or (is_mobile and 0.35 or 0.6),
+                }, Enum.EasingStyle.Quad, 0.15)
+            end
 
             Frame.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 
@@ -291,6 +314,7 @@
                     resizing = true
                     start = input.Position
                     start_size = frame.Size
+                    set_icon_active(true)
                 end
             end)
 
@@ -298,9 +322,11 @@
                 if input.UserInputType == Enum.UserInputType.MouseButton1 
                     or input.UserInputType == Enum.UserInputType.Touch then
                     resizing = false
+                    set_icon_active(false)
                 end
             end)
 
+            -- [MOBILE] ปุ่มรับการลากบน touch ต้องใช้ InputChanged บน UIS
             library:connection(uis.InputChanged, function(input, game_event) 
                 if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement 
                     or input.UserInputType == Enum.UserInputType.Touch) then
@@ -553,7 +579,7 @@
                 IgnoreGuiInset = true;
             }); 
 
-            -- [MOBILE] ปุ่มลอยสำหรับเปิด/ปิดเมนู
+            -- [MOBILE] ปุ่มลอยแนวนอน (horizontal pill) สำหรับเปิด/ปิดเมนู
             if is_mobile then
                 library[ "mobile_gui" ] = library:create( "ScreenGui" , {
                     Parent = coregui;
@@ -563,14 +589,18 @@
                     IgnoreGuiInset = true;
                 });
 
+                -- [MOBILE] Pill toggle แนวนอน วางกลางล่างของจอ (เหมาะกับนิ้วโป้ง)
+                local pill_width = 150
+                local pill_height = 46
+
                 local toggle_btn = library:create( "TextButton" , {
                     Parent = library[ "mobile_gui" ];
-                    Size = dim2(0, 46, 0, 46);
-                    Position = dim2(0, 14, 0, 60);
+                    Size = dim2(0, pill_width, 0, pill_height);
+                    Position = dim2(0.5, -pill_width / 2, 1, -(pill_height + 24));
                     BackgroundColor3 = themes.preset.accent;
-                    Text = "×";
+                    Text = "";
                     TextColor3 = rgb(255, 255, 255);
-                    TextSize = 26;
+                    TextSize = 16;
                     FontFace = fonts.font;
                     AutoButtonColor = false;
                     BorderSizePixel = 0;
@@ -580,15 +610,53 @@
                 library:create( "UIStroke" , { Parent = toggle_btn; Color = rgb(23, 23, 29); Thickness = 1 });
                 library:apply_theme(toggle_btn, "accent", "BackgroundColor3");
 
+                -- ไอคอน hamburger ด้านซ้าย
+                local pill_icon = library:create( "ImageLabel" , {
+                    Parent = toggle_btn;
+                    Name = "PillIcon";
+                    BackgroundTransparency = 1;
+                    Image = "rbxassetid://10734898355";
+                    ImageColor3 = rgb(255, 255, 255);
+                    Size = dim2(0, 22, 0, 22);
+                    Position = dim2(0, 14, 0.5, -11);
+                    ZIndex = 2;
+                });
+
+                -- ข้อความ "MENU"
+                local pill_text = library:create( "TextLabel" , {
+                    Parent = toggle_btn;
+                    Name = "PillText";
+                    BackgroundTransparency = 1;
+                    Text = "MENU";
+                    TextColor3 = rgb(255, 255, 255);
+                    TextSize = 16;
+                    FontFace = fonts.font;
+                    TextXAlignment = Enum.TextXAlignment.Left;
+                    Size = dim2(1, -46, 1, 0);
+                    Position = dim2(0, 42, 0, 0);
+                    ZIndex = 2;
+                });
+
                 library[ "mobile_toggle_btn" ] = toggle_btn
+                library[ "mobile_toggle_icon" ] = pill_icon
+                library[ "mobile_toggle_text" ] = pill_text
 
                 local menu_open = true
+
+                local function update_toggle_visual(open)
+                    pill_text.Text = open and "CLOSE" or "MENU"
+                    -- [MOBILE] ใช้ icon เปลี่ยนระหว่าง hamburger กับ X
+                    pill_icon.Image = open and "rbxassetid://10747384394" or "rbxassetid://10734898355"
+                end
+
                 bind_click(toggle_btn, function()
                     menu_open = not menu_open
                     library[ "items" ].Enabled = menu_open
                     library[ "other" ].Enabled = false
-                    toggle_btn.Text = menu_open and "×" or "≡"
+                    update_toggle_visual(menu_open)
                 end)
+
+                update_toggle_visual(menu_open)
             end
 
             local items = cfg.items; do
@@ -665,7 +733,6 @@
                     BorderColor3 = rgb(0, 0, 0);
                     Parent = items[ "side_frame" ];
                     Name = "\0";
-                    -- [THEME] ตัด <font color> ออก เพื่อให้ UIGradient แสดงสีได้เต็มที่
                     Text = string.format('<u>%s</u>%s', cfg.name, cfg.suffix);
                     BackgroundTransparency = 1;
                     Size = dim2(1, 0, 0, 70);
@@ -676,7 +743,6 @@
                     BackgroundColor3 = rgb(255, 255, 255)
                 }); library:apply_theme(items[ "title" ], "accent", "TextColor3");
 
-                -- [THEME] Gradient ชื่อ Hub 2 สี แนวนอน
                 items[ "title_gradient" ] = library:create( "UIGradient" , {
                     Parent = items[ "title" ];
                     Rotation = 0;
@@ -825,7 +891,8 @@
             function cfg.toggle_menu(bool) 
                 library[ "items" ].Enabled = bool
                 if library[ "mobile_toggle_btn" ] then
-                    library[ "mobile_toggle_btn" ].Text = bool and "×" or "≡"
+                    library[ "mobile_toggle_text" ].Text = bool and "CLOSE" or "MENU"
+                    library[ "mobile_toggle_icon" ].Image = bool and "rbxassetid://10747384394" or "rbxassetid://10734898355"
                 end
             end 
 
@@ -3664,6 +3731,7 @@
         end
 
         -- [THEME] ฟังก์ชันสำหรับสร้าง Tab Theme
+        -- [THEME] เพิ่ม "Main Background" แยก 2 ที่ (Main Frame + Side Frame)
         function library:init_theme(window)
             window:seperator({name = "Theme"})
 
@@ -3682,13 +3750,22 @@
                 icon = "rbxassetid://129380150574313"
             })
 
-            -- Background
+            -- [THEME] Main Background #1 — พื้นหลัง frame หลัก
             colors:colorpicker({
-                name = "Background",
-                flag = "theme_background",
-                color = library.main_frame and library.main_frame.BackgroundColor3 or rgb(14, 14, 16),
+                name = "Main Background",
+                flag = "theme_mainbg",
+                color = (library.main_frame and library.main_frame.BackgroundColor3) or rgb(14, 14, 16),
                 callback = function(c)
                     if library.main_frame then library.main_frame.BackgroundColor3 = c end
+                end,
+            })
+
+            -- [THEME] Main Background #2 — พื้นหลัง side frame
+            colors:colorpicker({
+                name = "Side Background",
+                flag = "theme_sidebg",
+                color = (library.side_frame and library.side_frame.BackgroundColor3) or rgb(14, 14, 16),
+                callback = function(c)
                     if library.side_frame then library.side_frame.BackgroundColor3 = c end
                 end,
             })
