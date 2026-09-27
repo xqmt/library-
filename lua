@@ -10,6 +10,7 @@
     -> [MOBILE] Long-press on keybind opens the mode dropdown (replaces right-click)
     -> [MOBILE] UI scale auto-fit for ~720p screens
     -> [MOBILE] Floating toggle button to open/close menu
+    -> [THEME] Hub name gradient + Theme tab (background / main / text / shadow / gradient / corner / transparency / top bar / text size)
 ]]
 
 -- Variables 
@@ -32,7 +33,6 @@
     local viewport_size = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
 
     -- [MOBILE] UI scale factor — ทำให้ UI พอดีกับจอ 720p
-    -- ถ้าจอสั้นกว่า 900px (เช่น 720p) จะย่อลงตามส่วน, ต่ำสุด 0.65
     local mobile_ui_scale = 1
     if is_mobile then
         local short_side = math.min(viewport_size.X, viewport_size.Y)
@@ -85,7 +85,6 @@
 -- 
 
 -- [MOBILE] Shared input helpers
-    -- Debounced activation helper: fires once regardless of MouseButton1Click + TouchTap duplicates
     local function bind_click(gui, callback)
         local last_fire = 0
         local function fire(...)
@@ -98,7 +97,6 @@
         gui.TouchTap:Connect(fire)
     end
 
-    -- Fires on press for both mouse-left and touch
     local function bind_press(gui, callback)
         gui.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 
@@ -108,7 +106,6 @@
         end)
     end
 
-    -- Fires on release for both mouse-left and touch
     local function bind_release(gui, callback)
         gui.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 
@@ -146,6 +143,12 @@
                 ScrollBarImageColor3 = {} 
             },
         }
+    }
+
+    -- [THEME] เก็บสี gradient ของชื่อ hub (2 สี)
+    library.gradient_colors = {
+        c1 = rgb(155, 150, 219),   -- สีเริ่ม (ม่วง accent)
+        c2 = rgb(120, 220, 255),   -- สีปลาย (ฟ้า)
     }
 
     local keys = {
@@ -267,7 +270,6 @@
 
         function library:resizify(frame) 
             local Frame = Instance.new("TextButton")
-            -- [MOBILE] Bigger touch target
             local handle_size = is_mobile and 22 or 10
             Frame.Position = dim2(1, -(handle_size + 2), 1, -(handle_size + 2))
             Frame.BorderColor3 = rgb(0, 0, 0)
@@ -283,7 +285,6 @@
             local start 
             local og_size = frame.Size  
 
-            -- [MOBILE] Handle mouse AND touch
             Frame.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1 
                     or input.UserInputType == Enum.UserInputType.Touch then
@@ -507,7 +508,7 @@
         function library:unload_menu() 
             if library[ "items" ] then library[ "items" ]:Destroy() end
             if library[ "other" ] then library[ "other" ]:Destroy() end 
-            if library[ "mobile_gui" ] then library[ "mobile_gui" ]:Destroy() end  -- [MOBILE]
+            if library[ "mobile_gui" ] then library[ "mobile_gui" ]:Destroy() end
             for index, connection in library.connections do 
                 connection:Disconnect() 
                 connection = nil 
@@ -518,7 +519,7 @@
     
     -- Library element functions
         function library:window(properties)
-            -- [MOBILE] Auto-fit window to mobile viewport (scaled for ~720p screens)
+            -- [MOBILE] Auto-fit window to mobile viewport
             local default_size = dim2(0, 700, 0, 565)
             if is_mobile then
                 local w = clamp(viewport_size.X * 0.90, 300, 700) * mobile_ui_scale
@@ -552,7 +553,7 @@
                 IgnoreGuiInset = true;
             }); 
 
-            -- [MOBILE] ปุ่มลอยสำหรับเปิด/ปิดเมนู (แยก ScreenGui เพื่อไม่โดนซ่อนพร้อมเมนู)
+            -- [MOBILE] ปุ่มลอยสำหรับเปิด/ปิดเมนู
             if is_mobile then
                 library[ "mobile_gui" ] = library:create( "ScreenGui" , {
                     Parent = coregui;
@@ -585,7 +586,7 @@
                 bind_click(toggle_btn, function()
                     menu_open = not menu_open
                     library[ "items" ].Enabled = menu_open
-                    library[ "other" ].Enabled = false  -- ปิด popup ค้างไว้ด้วย
+                    library[ "other" ].Enabled = false
                     toggle_btn.Text = menu_open and "×" or "≡"
                 end)
             end
@@ -662,18 +663,30 @@
                 items[ "title" ] = library:create( "TextLabel" , {
                     FontFace = fonts.font;
                     BorderColor3 = rgb(0, 0, 0);
-                    Text = name;
                     Parent = items[ "side_frame" ];
                     Name = "\0";
-                    Text = string.format('<u>%s</u><font color = "rgb(255, 255, 255)">%s</font>', cfg.name, cfg.suffix);
+                    -- [THEME] ตัด <font color> ออก เพื่อให้ UIGradient แสดงสีได้เต็มที่
+                    Text = string.format('<u>%s</u>%s', cfg.name, cfg.suffix);
                     BackgroundTransparency = 1;
                     Size = dim2(1, 0, 0, 70);
-                    TextColor3 = themes.preset.accent;
+                    TextColor3 = rgb(255, 255, 255);
                     BorderSizePixel = 0;
                     RichText = true;
                     TextSize = 30;
                     BackgroundColor3 = rgb(255, 255, 255)
                 }); library:apply_theme(items[ "title" ], "accent", "TextColor3");
+
+                -- [THEME] Gradient ชื่อ Hub 2 สี แนวนอน
+                items[ "title_gradient" ] = library:create( "UIGradient" , {
+                    Parent = items[ "title" ];
+                    Rotation = 0;
+                    Color = rgbseq{
+                        rgbkey(0, library.gradient_colors.c1),
+                        rgbkey(0.5, library.gradient_colors.c1),
+                        rgbkey(1, library.gradient_colors.c2),
+                    };
+                    Transparency = numseq{ numkey(0, 0), numkey(1, 0) };
+                });
                 
                 items[ "multi_holder" ] = library:create( "Frame" , {
                     Parent = items[ "main" ];
@@ -794,6 +807,16 @@
                 }); library:apply_theme(items[ "other_info" ], "accent", "TextColor3");        
             end 
 
+            -- [THEME] เก็บ reference ให้ Theme Tab ปรับแต่งได้
+            library.main_frame     = items[ "main" ]
+            library.side_frame     = items[ "side_frame" ]
+            library.title_label    = items[ "title" ]
+            library.title_gradient = items[ "title_gradient" ]
+            library.info_frame     = items[ "info" ]
+            library.grey_fill      = items[ "grey_fill" ]
+            library.shadow_label   = items[ "shadow" ]
+            library.multi_holder   = items[ "multi_holder" ]
+
             do -- Other
                 library:draggify(items[ "main" ])
                 library:resizify(items[ "main" ])
@@ -801,7 +824,6 @@
 
             function cfg.toggle_menu(bool) 
                 library[ "items" ].Enabled = bool
-                -- [MOBILE] sync ปุ่มลอยให้ตรงกับ state
                 if library[ "mobile_toggle_btn" ] then
                     library[ "mobile_toggle_btn" ].Text = bool and "×" or "≡"
                 end
@@ -1073,7 +1095,6 @@
                             library:close_element()
                         end
 
-                        -- [MOBILE] unified debounced click
                         bind_click(multi_items[ "button" ], function()
                             data.open_page() 
                         end)
@@ -1128,7 +1149,6 @@
                 library:close_element()
             end
 
-            -- [MOBILE] unified debounced click
             bind_click(items[ "button" ], function()
                 cfg.open_tab()
             end)
@@ -1277,7 +1297,6 @@
                     ScrollBarImageColor3 = rgb(44, 44, 46);
                     Active = true;
                     AutomaticCanvasSize = Enum.AutomaticSize.Y;
-                    -- [MOBILE] Thicker scrollbar for fingers
                     ScrollBarThickness = is_mobile and 4 or 2;
                     Parent = items[ "inline" ];
                     Name = "\0";
@@ -1462,7 +1481,6 @@
             end;
 
             if cfg.fading_toggle then
-                -- [MOBILE] unified debounced click (handles both mouse + touch)
                 bind_click(items[ "button" ], function()
                     cfg.default = not cfg.default 
                     cfg.toggle_section(cfg.default) 
@@ -1508,7 +1526,6 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
-                    -- [MOBILE] taller row for finger
                     Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
@@ -1589,7 +1606,6 @@
                             Parent = items[ "right_components" ];
                             Name = "\0";
                             Position = dim2(1, 0, 0, 0);
-                            -- [MOBILE] slightly bigger checkbox
                             Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                             BorderSizePixel = 0;
                             TextSize = 14;
@@ -1716,8 +1732,6 @@
                 flags[cfg.flag] = bool
             end 
             
-            -- [MOBILE] Shared-debounced toggle — ผูกทั้ง row + switch
-            -- ใช้ debounce ร่วมกันเพื่อกัน TouchTap + MouseButton1Click ยิงซ้ำ
             local _toggle_last = 0
             local function _do_toggle()
                 local now = os.clock()
@@ -1727,14 +1741,11 @@
                 cfg.set(cfg.enabled)
             end
 
-            -- Row-level (คลิก/แตะที่แถวไหนก็ได้)
             items[ "toggle" ].MouseButton1Click:Connect(_do_toggle)
             items[ "toggle" ].TouchTap:Connect(_do_toggle)
-            -- Switch เอง (เผื่อ tap ลงบนสวิตช์โดยตรง — บนมือถือ Roblox ไม่ bubble TouchTap ขึ้น parent)
             items[ "toggle_button" ].MouseButton1Click:Connect(_do_toggle)
             items[ "toggle_button" ].TouchTap:Connect(_do_toggle)
 
-            -- [MOBILE] แสดงผลสถานะเริ่มต้น
             if cfg.default then
                 cfg.enabled = true
             end
@@ -1787,7 +1798,6 @@
                     Parent = self.items[ "elements" ];
                     Name = "\0";
                     BackgroundTransparency = 1;
-                    -- [MOBILE] Taller slider row for finger hit
                     Size = dim2(1, 0, 0, is_mobile and 24 or 0);
                     BorderSizePixel = 0;
                     AutomaticSize = Enum.AutomaticSize.Y;
@@ -1843,7 +1853,6 @@
                     BackgroundTransparency = 1;
                     Position = dim2(0, 4, 0, 23);
                     BorderColor3 = rgb(0, 0, 0);
-                    -- [MOBILE] Taller slider bar area
                     Size = dim2(1, 0, 0, is_mobile and 16 or 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
@@ -1866,7 +1875,6 @@
                     Parent = items[ "right_components" ];
                     Name = "\0";
                     Position = dim2(1, 0, 0, 0);
-                    -- [MOBILE] Thicker bar for finger
                     Size = is_mobile and dim2(1, -4, 0, 6) or dim2(1, -4, 0, 4);
                     BorderSizePixel = 0;
                     TextSize = 14;
@@ -1898,7 +1906,6 @@
                     Name = "\0";
                     Position = dim2(1, 0, 0.5, 0);
                     BorderColor3 = rgb(0, 0, 0);
-                    -- [MOBILE] Bigger knob
                     Size = is_mobile and dim2(0, 16, 0, 16) or dim2(0, 12, 0, 12);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(244, 244, 244)
@@ -1947,7 +1954,6 @@
                 cfg.callback(flags[cfg.flag])
             end
 
-            -- [MOBILE] unified press/release for both mouse and touch
             bind_press(items[ "slider" ], function(input)
                 cfg.dragging = true 
                 library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingStyle.Quad, 0.2)
@@ -2102,7 +2108,6 @@
                         Parent = items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        -- [MOBILE] taller dropdown button for finger
                         Size = is_mobile and dim2(0, cfg.width, 0, 24) or dim2(0, cfg.width, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -2216,7 +2221,6 @@
                 
                 library:create( "UIPadding" , {
                     Parent = button;
-                    -- [MOBILE] taller option rows
                     PaddingTop = dim(0, is_mobile and 6 or 1);
                     PaddingBottom = dim(0, is_mobile and 6 or 0);
                     PaddingRight = dim(0, 5);
@@ -2270,7 +2274,6 @@
                     cfg.y_size += button.AbsoluteSize.Y + 6
                     insert(cfg.option_instances, button)
                     
-                    -- [MOBILE] unified debounced click
                     bind_click(button, function()
                         if cfg.multi then 
                             local selected_index = find(cfg.multi_items, button.Text)
@@ -2292,7 +2295,6 @@
                 end
             end
 
-            -- [MOBILE] unified debounced click
             bind_click(items[ "dropdown" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -2462,7 +2464,6 @@
                         Parent = label and label.items.right_components or self.items[ "right_components" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        -- [MOBILE] bigger swatch
                         Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -2502,7 +2503,6 @@
                         Name = "\0";
                         Position = dim2(0.20000000298023224, 20, 0.296999990940094, 0);
                         BorderColor3 = rgb(0, 0, 0);
-                        -- [MOBILE] slightly bigger picker card
                         Size = is_mobile and dim2(0, 210, 0, 240) or dim2(0, 166, 0, 197);
                         BorderSizePixel = 0;
                         Visible = true;
@@ -2602,7 +2602,6 @@
                         Parent = items[ "saturation_holder" ];
                         Name = "\0";
                         Position = dim2(0, 0, 4, 0);
-                        -- [MOBILE] bigger picker dot
                         Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
@@ -2625,7 +2624,6 @@
                         Name = "\0";
                         Position = dim2(0, 10, 1, -64);
                         BorderColor3 = rgb(0, 0, 0);
-                        -- [MOBILE] thicker hue bar
                         Size = is_mobile and dim2(1, -20, 0, 14) or dim2(1, -20, 0, 8);
                         BorderSizePixel = 0;
                         BackgroundColor3 = rgb(255, 255, 255);
@@ -2651,7 +2649,6 @@
                         Parent = items[ "hue_gradient" ];
                         Name = "\0";
                         Position = dim2(0, 0, 0.5, 0);
-                        -- [MOBILE] bigger hue knob
                         Size = is_mobile and dim2(0, 14, 0, 14) or dim2(0, 8, 0, 8);
                         ZIndex = 5;
                         BorderSizePixel = 0;
@@ -2849,13 +2846,11 @@
                 cfg.set()
             end
 
-            -- [MOBILE] unified debounced click for opening
             bind_click(items[ "colorpicker" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)            
             end)
 
-            -- [MOBILE] Drag handlers — mouse AND touch
             library:connection(uis.InputChanged, function(input)
                 if (dragging_sat or dragging_hue or dragging_alpha) and 
                    (input.UserInputType == Enum.UserInputType.MouseMovement 
@@ -2873,7 +2868,6 @@
                 end
             end)    
 
-            -- [MOBILE] start drag on press (works for mouse and touch)
             bind_press(items[ "alpha_gradient" ], function() dragging_alpha = true end)
             bind_press(items[ "hue_gradient" ], function() dragging_hue = true end)
             bind_press(items[ "sat" ], function() dragging_sat = true end)
@@ -2987,7 +2981,6 @@
                     TextColor3 = rgb(245, 245, 245);
                     BorderColor3 = rgb(0, 0, 0);
                     Position = dim2(1, 0, 0, 0);
-                    -- [MOBILE] taller input
                     Size = is_mobile and dim2(1, -4, 0, 34) or dim2(1, -4, 0, 30);
                     BackgroundColor3 = rgb(33, 33, 35)
                 }); 
@@ -3233,7 +3226,6 @@
                             PaddingLeft = dim(0, 5)
                         });
 
-                        -- [MOBILE] unified debounced click
                         bind_click(name, function()
                             cfg.set(option)
                             cfg.set_visible(false)
@@ -3314,8 +3306,6 @@
                 items[ "dropdown" ].Position = dim_offset(items[ "keybind_holder" ].AbsolutePosition.X, items[ "keybind_holder" ].AbsolutePosition.Y + items[ "keybind_holder" ].AbsoluteSize.Y + 60)
             end
         
-            -- [MOBILE] press-to-bind on tap, long-press to open mode dropdown.
-            --          On desktop right-click still opens mode dropdown.
             local press_start = 0
             local long_press_fired = false
 
@@ -3325,7 +3315,6 @@
                     press_start = tick()
                     long_press_fired = false
 
-                    -- Long-press detector
                     task.spawn(function()
                         local start = press_start
                         task.wait(0.5)
@@ -3355,7 +3344,6 @@
                 press_start = 0
             end)
 
-            -- [MOBILE] Desktop right-click still available
             items[ "keybind_holder" ].MouseButton2Down:Connect(function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -3423,7 +3411,6 @@
                     Parent = items[ "button_element" ];
                     Name = "\0";
                     Position = dim2(1, -4, 0, 0);
-                    -- [MOBILE] taller button
                     Size = is_mobile and dim2(1, -8, 0, 38) or dim2(1, -8, 0, 30);
                     BorderSizePixel = 0;
                     TextSize = 14;
@@ -3451,7 +3438,6 @@
                 }); library:apply_theme(items[ "name" ], "accent", "BackgroundColor3");                            
             end 
 
-            -- [MOBILE] unified debounced click
             bind_click(items[ "button" ], function()
                 cfg.callback()
                 items[ "name" ].TextColor3 = themes.preset.accent 
@@ -3530,7 +3516,6 @@
                     AutoButtonColor = false;
                     Parent = self.items[ "right_components" ];
                     BorderColor3 = rgb(0, 0, 0);
-                    -- [MOBILE] bigger gear
                     Size = is_mobile and dim2(0, 22, 0, 22) or dim2(0, 16, 0, 16);
                     BorderSizePixel = 0;
                     BackgroundColor3 = rgb(255, 255, 255)
@@ -3543,7 +3528,6 @@
                 library:close_element(cfg)
             end
             
-            -- [MOBILE] unified debounced click
             bind_click(items[ "tick" ], function()
                 cfg.open = not cfg.open 
                 cfg.set_visible(cfg.open)
@@ -3603,7 +3587,6 @@
                         Parent = items[ "list" ];
                         Name = "\0";
                         Position = dim2(1, 0, 0, 0);
-                        -- [MOBILE] taller rows
                         Size = is_mobile and dim2(1, 0, 0, 40) or dim2(1, 0, 0, 30);
                         BorderSizePixel = 0;
                         TextSize = 14;
@@ -3630,7 +3613,6 @@
                         CornerRadius = dim(0, 3)
                     });     
 
-                    -- [MOBILE] unified debounced click
                     bind_click(button, function()
                         local current = cfg.current_element 
                         if current and current ~= name then 
@@ -3676,6 +3658,162 @@
             section:button({name = "Delete", callback = function() delfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg")  library:update_config_list() notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. flags["config_name_list"]}) end})
             section:colorpicker({name = "Menu Accent", callback = function(color, alpha) library:update_theme("accent", color) end, color = themes.preset.accent})
             section:keybind({name = "Menu Bind", callback = function(bool) window.toggle_menu(bool) end, default = true})
+
+            -- [THEME] เพิ่ม Tab Theme ให้อัตโนมัติ
+            library:init_theme(window)
+        end
+
+        -- [THEME] ฟังก์ชันสำหรับสร้าง Tab Theme
+        function library:init_theme(window)
+            window:seperator({name = "Theme"})
+
+            local page = window:tab({
+                name = "Theme",
+                icon = "rbxassetid://7733765398",
+                tabs = {"Theme"}
+            })
+
+            ------------------------------------------------------------
+            -- Column 1 : Colors
+            ------------------------------------------------------------
+            local col1 = page:column({})
+            local colors = col1:section({
+                name = "Colors", size = 1, default = true,
+                icon = "rbxassetid://129380150574313"
+            })
+
+            -- Background
+            colors:colorpicker({
+                name = "Background",
+                flag = "theme_background",
+                color = library.main_frame and library.main_frame.BackgroundColor3 or rgb(14, 14, 16),
+                callback = function(c)
+                    if library.main_frame then library.main_frame.BackgroundColor3 = c end
+                    if library.side_frame then library.side_frame.BackgroundColor3 = c end
+                end,
+            })
+
+            -- Main
+            colors:colorpicker({
+                name = "Main",
+                flag = "theme_main",
+                color = rgb(22, 22, 24),
+                callback = function(c)
+                    if library.info_frame then library.info_frame.BackgroundColor3 = c end
+                    if library.grey_fill then library.grey_fill.BackgroundColor3 = c end
+                end,
+            })
+
+            -- Text
+            colors:colorpicker({
+                name = "Text",
+                flag = "theme_text",
+                color = rgb(255, 255, 255),
+                callback = function(c)
+                    if library.title_label then library.title_label.TextColor3 = c end
+                end,
+            })
+
+            -- Shadow
+            colors:colorpicker({
+                name = "Shadow",
+                flag = "theme_shadow",
+                color = rgb(0, 0, 0),
+                callback = function(c)
+                    if library.shadow_label then library.shadow_label.ImageColor3 = c end
+                end,
+            })
+
+            -- Gradient 1
+            colors:colorpicker({
+                name = "Gradient 1",
+                flag = "theme_grad1",
+                color = library.gradient_colors.c1,
+                callback = function(c)
+                    library.gradient_colors.c1 = c
+                    if library.title_gradient then
+                        library.title_gradient.Color = rgbseq{
+                            rgbkey(0, library.gradient_colors.c1),
+                            rgbkey(0.5, library.gradient_colors.c1),
+                            rgbkey(1, library.gradient_colors.c2),
+                        }
+                    end
+                end,
+            })
+
+            -- Gradient 2
+            colors:colorpicker({
+                name = "Gradient 2",
+                flag = "theme_grad2",
+                color = library.gradient_colors.c2,
+                callback = function(c)
+                    library.gradient_colors.c2 = c
+                    if library.title_gradient then
+                        library.title_gradient.Color = rgbseq{
+                            rgbkey(0, library.gradient_colors.c1),
+                            rgbkey(0.5, library.gradient_colors.c1),
+                            rgbkey(1, library.gradient_colors.c2),
+                        }
+                    end
+                end,
+            })
+
+            -- Top Bar
+            colors:colorpicker({
+                name = "Top Bar",
+                flag = "theme_topbar",
+                color = rgb(23, 23, 25),
+                callback = function(c)
+                    if library.info_frame then library.info_frame.BackgroundColor3 = c end
+                    if library.grey_fill then library.grey_fill.BackgroundColor3 = c end
+                end,
+            })
+
+            ------------------------------------------------------------
+            -- Column 2 : Layout
+            ------------------------------------------------------------
+            local col2 = page:column({})
+            local layout = col2:section({
+                name = "Layout", size = 1, default = true,
+                icon = "rbxassetid://129380150574313"
+            })
+
+            -- UI Corner
+            layout:slider({
+                name = "UI Corner",
+                flag = "theme_corner",
+                min = 0, max = 24, default = 10, interval = 1,
+                callback = function(v)
+                    if library.main_frame then
+                        local corner = library.main_frame:FindFirstChildOfClass("UICorner")
+                        if corner then corner.CornerRadius = UDim.new(0, v) end
+                    end
+                end,
+            })
+
+            -- UI Transparency
+            layout:slider({
+                name = "UI Transparency",
+                flag = "theme_transparency",
+                min = 0, max = 1, default = 0, interval = 0.05,
+                callback = function(v)
+                    if library.main_frame then
+                        library.main_frame.BackgroundTransparency = v
+                    end
+                end,
+            })
+
+            -- Text Size
+            layout:slider({
+                name = "Text Size",
+                flag = "theme_textsize",
+                min = 10, max = 60, default = 30, interval = 1,
+                callback = function(v)
+                    if library.title_label then
+                        library.title_label.TextSize = v
+                    end
+                end,
+            })
         end
     --
 
