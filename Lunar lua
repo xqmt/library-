@@ -254,7 +254,7 @@ local Visuals = {
 }
 local LocalPlayer = Players.LocalPlayer; 
 local Mouse = LocalPlayer:GetMouse();
-local CurrentInputPosition = Vector2.new(0, 0); -- NEW: mobile/PC input tracker
+local CurrentInputPosition = Vector2.new(0, 0);
 local Camera = Workspace.Camera;
 local viewportSize = game.Workspace.Camera.ViewportSize;
 local Offset = game:GetService("GuiService"):GetGuiInset().Y;
@@ -297,7 +297,7 @@ local buying = false;
 local PlaceHolderUI = Instance.new("ScreenGui", game.CoreGui);
 PlaceHolderUI.Enabled = false
 
--- NEW: track input for both mouse & touch (mobile support for IsMouseOverFrame)
+-- track input for both mouse & touch (mobile support for IsMouseOverFrame)
 InputService.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1
@@ -615,7 +615,7 @@ Library.Sections.__index = Library.Sections;
 		--
 		function Library:IsMouseOverFrame(Frame)
 			local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize;
-			local pos = CurrentInputPosition; -- NEW: works for touch & mouse
+			local pos = CurrentInputPosition;
 
 			if pos.X >= AbsPos.X and pos.X <= AbsPos.X + AbsSize.X
 				and pos.Y >= AbsPos.Y and pos.Y <= AbsPos.Y + AbsSize.Y then
@@ -792,6 +792,7 @@ Library.Sections.__index = Library.Sections;
 			Color.FontFace = Font.new("rbxassetid://12187371840")
 			Color.TextSize = 14
 			Color.ZIndex = 100
+			Color.Active = true -- ✅ PATCH: รับ touch
 			--
 			Sat.Name = "Sat"
 			Sat.Size = UDim2.new(1,0,1,0)
@@ -801,6 +802,7 @@ Library.Sections.__index = Library.Sections;
 			Sat.BorderColor3 = Color3.new(0,0,0)
 			Sat.Image = "http://www.roblox.com/asset/?id=14684562507"
 			Sat.ZIndex = 100
+			Sat.Active = true -- ✅ PATCH
 			--
 			Val.Name = "Val"
 			Val.Size = UDim2.new(1,0,1,0)
@@ -810,6 +812,7 @@ Library.Sections.__index = Library.Sections;
 			Val.BorderColor3 = Color3.new(0,0,0)
 			Val.Image = "http://www.roblox.com/asset/?id=14684563800"
 			Val.ZIndex = 100
+			Val.Active = true -- ✅ PATCH
 			--
 			Pointer.Name = "Pointer"
 			Pointer.Position = UDim2.new(1,0,1,0)
@@ -845,6 +848,7 @@ Library.Sections.__index = Library.Sections;
 			Hue.Image = "http://www.roblox.com/asset/?id=14684557999"
 			Hue.AutoButtonColor = false
 			Hue.ZIndex = 100
+			Hue.Active = true -- ✅ PATCH
 			--
 			HueOutline.Name = "HueOutline"
 			HueOutline.Position = UDim2.new(0,-1,0,-1)
@@ -865,6 +869,7 @@ Library.Sections.__index = Library.Sections;
 			Alpha.Image = "http://www.roblox.com/asset/?id=14684560169"
 			Alpha.AutoButtonColor = false
 			Alpha.ZIndex = 100
+			Alpha.Active = true -- ✅ PATCH
 			--
 			AlphaOutline.Name = "AlphaOutline"
 			AlphaOutline.Position = UDim2.new(0,-1,0,-1)
@@ -954,7 +959,6 @@ Library.Sections.__index = Library.Sections;
 			local slidinghue = false
 			local slidingalpha = false
 
-			-- // MODIFIED: touch support (accepts input)
 			local function update(input)
 				local real_pos
 				if input and (input.UserInputType == Enum.UserInputType.Touch
@@ -981,7 +985,6 @@ Library.Sections.__index = Library.Sections;
 				if slidingalpha then
 					alpha = math.clamp(relative_opacity.Y / Alpha.AbsoluteSize.Y, 0, 1)
 				end
-				-- edited by finobe (yes these fucking alphas crash on roexec? nice executor for $8 a week :[ )
 				hsv = Color3.fromHSV(hue, sat, val)
 				Pointer.Position = UDim2.new(math.clamp(1 - sat, 0.005, 0.995), 0, math.clamp(1 - val, 0.005, 0.995), 0)
 				Color.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
@@ -1038,7 +1041,7 @@ Library.Sections.__index = Library.Sections;
 
 			set(default, defaultalpha)
 
-			-- // MODIFIED: touch support on all pickers
+			-- ✅ PATCH: touch support บน pickers
 			Sat.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
@@ -1104,20 +1107,24 @@ Library.Sections.__index = Library.Sections;
 				end
 			end)
 
-			Icon.MouseButton1Down:Connect(function()
-				ColorWindow.Visible = not ColorWindow.Visible
-				parent.ZIndex = ColorWindow.Visible and 5 or 1
+			-- ✅ PATCH: ใช้ InputBegan เพื่อให้แตะได้บนมือถือ
+			Icon.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					ColorWindow.Visible = not ColorWindow.Visible
+					parent.ZIndex = ColorWindow.Visible and 5 or 1
 
-				if slidinghue then
-					slidinghue = false
-				end
+					if slidinghue then
+						slidinghue = false
+					end
 
-				if slidingsaturation then
-					slidingsaturation = false
-				end
+					if slidingsaturation then
+						slidingsaturation = false
+					end
 
-				if slidingalpha then
-					slidingalpha = false
+					if slidingalpha then
+						slidingalpha = false
+					end
 				end
 			end)
 			
@@ -1134,7 +1141,6 @@ Library.Sections.__index = Library.Sections;
 				set(Library.CopiedColor or Color3.new(1,1,1), Library.CopiedAlpha or 0)
 			end)
 			--
-			-- // MODIFIED: touch support
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
 				if ModeOutline.Visible and (Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch) then
@@ -1150,7 +1156,6 @@ Library.Sections.__index = Library.Sections;
 				set(color, newalpha)
 			end
 
-			-- // MODIFIED: touch support
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
 				if ColorWindow.Visible and (Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch) then
@@ -1236,7 +1241,7 @@ Library.Sections.__index = Library.Sections;
 			UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 			--
 			DragButton.Name = "DragButton"
-			DragButton.Size = UDim2.new(1,0,0, (game:GetService("UserInputService").TouchEnabled and 22 or 10)) -- NEW: bigger hitbox on mobile
+			DragButton.Size = UDim2.new(1,0,0, (game:GetService("UserInputService").TouchEnabled and 22 or 10))
 			DragButton.BackgroundColor3 = Color3.new(1,1,1)
 			DragButton.BackgroundTransparency = 1
 			DragButton.BorderSizePixel = 0
@@ -1247,15 +1252,13 @@ Library.Sections.__index = Library.Sections;
 			DragButton.FontFace = Font.new("rbxassetid://12187371840")
 			DragButton.TextSize = 14
 			
-            
-			
 			-- // Elements
 			Window.Elements = {
 				TabHolder = Tabs,
 				Holder = HolderInline
 			}
 
-			-- // Dragging (MODIFIED: PC + Mobile)
+			-- // Dragging (PC + Mobile)
 			local dragging = false
 			local dragStartInput = nil
 			local dragStartPos = nil
@@ -1293,7 +1296,7 @@ Library.Sections.__index = Library.Sections;
 				end
 			end)
 
-			-- // NEW: Mobile Toggle Button (top-left, draggable)
+			-- // Mobile Toggle Button
 			if game:GetService("UserInputService").TouchEnabled then
 				local MobileGui = Instance.new('ScreenGui')
 				MobileGui.Name = "LibraryMobileToggle"
@@ -1544,8 +1547,6 @@ Library.Sections.__index = Library.Sections;
 				Elements = {},
 			}
 			--
-            --Weapon.Window.Elements.WeaponOutline.Visible = true
-
 			local Left = Instance.new('Frame', Weapon.Window.Window.Elements.Holder)
 			local Right = Instance.new('Frame', Weapon.Window.Window.Elements.Holder)
 			local UIListLayout = Instance.new('UIListLayout', Left)
@@ -1606,15 +1607,12 @@ Library.Sections.__index = Library.Sections;
 				end
 			end)
 			--
-
-			-- // Elements
 			Weapon.Elements = {
 				Left = Left,
 				Right = Right,
 				Button = New
 			}
 
-			-- // Drawings
 			if #Weapon.Window.Weapons == 0 then
 				Weapon:Turn(true)
 			end
@@ -1632,7 +1630,7 @@ Library.Sections.__index = Library.Sections;
 				Name = Properties.Name or "Section",
 				Page = self,
 				Side = (Properties.side or Properties.Side or "left"):lower(),
-				ZIndex = Properties.ZIndex or 1, -- Idfk why
+				ZIndex = Properties.ZIndex or 1,
 				Elements = {},
 				Content = {},
 			}
@@ -1652,8 +1650,6 @@ Library.Sections.__index = Library.Sections;
 			SectionOutline.BorderColor3 = Color3.new(0.0392,0.0392,0.0392)
 			SectionOutline.AutomaticSize = Enum.AutomaticSize.Y
 			SectionOutline.ZIndex = Section.ZIndex
-			--
-			
 			--
 			SectionInline.Name = "SectionInline"
 			SectionInline.Position = UDim2.new(0,1,0,1)
@@ -2139,7 +2135,6 @@ Library.Sections.__index = Library.Sections;
 					Always.TextColor3 = Color3.new(1,1,1)
 				end)
 				--
-				-- MODIFIED: close menu on touch too
 				Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
 					if ModeOutline.Visible and (Input.UserInputType == Enum.UserInputType.MouseButton1
 						or Input.UserInputType == Enum.UserInputType.Touch) then
@@ -2197,7 +2192,6 @@ Library.Sections.__index = Library.Sections;
 							or Library.NextFlag()
 					),
 				}
-				-- // Functions
 				Toggle.Colorpickers = Toggle.Colorpickers + 1
 				local colorpickertypes = Library:NewPicker(
 					"",
@@ -2232,6 +2226,7 @@ Library.Sections.__index = Library.Sections;
 			return Toggle
 		end
 		--
+		-- ✅ PATCH: Slider — ลื่นบนมือถือ
 		function Sections:Slider(Properties)
 			if not Properties then
 				Properties = {}
@@ -2328,6 +2323,7 @@ Library.Sections.__index = Library.Sections;
 			Accent.AutoButtonColor = false
 			Accent.FontFace = Font.new("rbxassetid://12187371840")
 			Accent.TextSize = 14
+			Accent.Active = true -- ✅ PATCH
 			table.insert(Library.ThemeObjects, Accent)
 			table.insert(Library.ThemeObjects, Accent)
 			--
@@ -2396,7 +2392,6 @@ Library.Sections.__index = Library.Sections;
 
 				local sizeX = ((value - Slider.Min) / (Slider.Max - Slider.Min))
 				Accent.Size = UDim2.new(sizeX, 0, 1, 0)
-				--Value.Text = TextValue:gsub("%[value%]", string.format("%.14g", value))
 				if Slider.Disabled and value == Slider.Min then
 					Value.Text = Slider.Disabled
 				else
@@ -2413,42 +2408,61 @@ Library.Sections.__index = Library.Sections;
 				local value = ((Slider.Max - Slider.Min) * sizeX) + Slider.Min
 				Set(value)
 			end
-			--
-			-- // MODIFIED: touch support
-			Library:Connection(NewSlider.InputBegan, function(input)
+
+			-- ✅ PATCH: ใช้ RenderStepped loop + GetTouchInputPositions เพื่อความลื่นบนมือถือ
+			local SlideConnection
+			local function BeginSlide(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = true
 					Slide(input)
+					if SlideConnection then SlideConnection:Disconnect() end
+					SlideConnection = RunService.RenderStepped:Connect(function()
+						if not Sliding then return end
+						local pos
+						if InputService.TouchEnabled then
+							local touchInputs = InputService:GetTouchInputPositions()
+							if touchInputs and #touchInputs > 0 then
+								pos = Vector2.new(touchInputs[1].X, touchInputs[1].Y - Offset)
+							end
+						end
+						if not pos then
+							local ml = InputService:GetMouseLocation()
+							pos = Vector2.new(ml.X, ml.Y - Offset)
+						end
+						local sizeX = (pos.X - Outline.AbsolutePosition.X) / Outline.AbsoluteSize.X
+						sizeX = math.clamp(sizeX, 0, 1)
+						local value = ((Slider.Max - Slider.Min) * sizeX) + Slider.Min
+						Set(value)
+					end)
 				end
-			end)
-			Library:Connection(NewSlider.InputEnded, function(input)
+			end
+
+			local function EndSlide(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = false
+					if SlideConnection then
+						SlideConnection:Disconnect()
+						SlideConnection = nil
+					end
 				end
-			end)
-			Library:Connection(Accent.InputBegan, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
-					Sliding = true
-					Slide(input)
-				end
-			end)
-			Library:Connection(Accent.InputEnded, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-					or input.UserInputType == Enum.UserInputType.Touch then
-					Sliding = false
-				end
-			end)
+			end
+
+			NewSlider.InputBegan:Connect(BeginSlide)
+			NewSlider.InputEnded:Connect(EndSlide)
+			Accent.InputBegan:Connect(BeginSlide)
+			Accent.InputEnded:Connect(EndSlide)
+
 			Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
 				if input.UserInputType == Enum.UserInputType.MouseMovement
 					or input.UserInputType == Enum.UserInputType.Touch then
-					if Sliding then
+					if Sliding and not SlideConnection then
 						Slide(input)
 					end
 				end
 			end)
+
 			Library:Connection(NewSlider.MouseEnter, function()
 				table.insert(Library.ThemeObjects, Title)
 				Title.TextColor3 = Library.Accent
@@ -2472,7 +2486,7 @@ Library.Sections.__index = Library.Sections;
 			end
 			-- 
 			function Slider:SetVisible(Bool) 
-				NewSlider.Visible = Bool
+				NewSlider.Visible = Bool 
 			end 
 			--
 			Flags[Slider.Flag] = Set
@@ -2483,6 +2497,7 @@ Library.Sections.__index = Library.Sections;
 			return Slider
 		end
 		--
+		-- ✅ PATCH: Dropdown — แตะได้ + เลือก option ได้บนมือถือ
 		function Sections:Dropdown(Properties)
 			local Properties = Properties or {};
 			local Dropdown = {
@@ -2617,24 +2632,33 @@ Library.Sections.__index = Library.Sections;
 			--
 			UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 			
-			-- // Connections
-			Library:Connection(Outline.MouseButton1Down, function()
-				ContainerOutline.Visible = not ContainerOutline.Visible
-				if ContainerOutline.Visible then
-					NewDrop.ZIndex = 2
-					Icon.Text = "-"
-				else
-					NewDrop.ZIndex = 1
-					Icon.Text = "+"
+			-- ✅ PATCH: ใช้ InputBegan แทน MouseButton1Down ให้แตะได้บนมือถือ
+			Outline.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					ContainerOutline.Visible = not ContainerOutline.Visible
+					if ContainerOutline.Visible then
+						NewDrop.ZIndex = 2
+						ContainerOutline.ZIndex = 100
+						ContainerInline.ZIndex = 101
+						Icon.Text = "-"
+					else
+						NewDrop.ZIndex = 1
+						ContainerOutline.ZIndex = 5
+						ContainerInline.ZIndex = 6
+						Icon.Text = "+"
+					end
 				end
 			end)
-			-- // MODIFIED: touch support
+
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
 				if ContainerOutline.Visible and (Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch) then
 					if not Library:IsMouseOverFrame(ContainerOutline) and not Library:IsMouseOverFrame(NewDrop) then
 						ContainerOutline.Visible = false
 						NewDrop.ZIndex = 1
+						ContainerOutline.ZIndex = 5
+						ContainerInline.ZIndex = 6
 						Icon.Text = "+"
 					end
 				end
@@ -2653,8 +2677,11 @@ Library.Sections.__index = Library.Sections;
 			--
 			local chosen = Dropdown.Max and {} or nil
 			--
+			-- ✅ PATCH: ใช้ InputBegan
 			local function handleoptionclick(option, button, text)
-				button.MouseButton1Down:Connect(function()
+				button.InputBegan:Connect(function(input)
+					if not (input.UserInputType == Enum.UserInputType.MouseButton1
+						or input.UserInputType == Enum.UserInputType.Touch) then return end
 					if Dropdown.Max then
 						if table.find(chosen, option) then
 							table.remove(chosen, table.find(chosen, option))
@@ -3169,7 +3196,6 @@ Library.Sections.__index = Library.Sections;
 				Always.TextColor3 = Color3.new(1,1,1)
 			end)
 			--
-			-- // MODIFIED: touch support
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(Input, Chatting)
 				if ModeOutline.Visible and (Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch) then
@@ -3286,6 +3312,7 @@ Library.Sections.__index = Library.Sections;
 			return Colorpicker
 		end
 		--
+		-- ✅ PATCH: Textbox — ให้แตะ + พิมพ์ได้บนมือถือ
 		function Sections:Textbox(Properties)
 			local Properties = Properties or {}
 			local Textbox = {
@@ -3326,7 +3353,7 @@ Library.Sections.__index = Library.Sections;
 			}
 			--
 			local NewDrop = Instance.new('Frame', Textbox.Section.Elements.SectionContent)
-			local Outline = Instance.new('TextButton', NewDrop)
+			local Outline = Instance.new('Frame', NewDrop) -- ✅ PATCH: Frame แทน TextButton กันบัง TextBox
 			local Inline = Instance.new('Frame', Outline)
 			local Value = Instance.new('TextBox', Inline)
 			local Title = Instance.new('TextLabel', NewDrop)
@@ -3344,8 +3371,6 @@ Library.Sections.__index = Library.Sections;
 			Outline.BackgroundColor3 = Color3.new(0.1765,0.1765,0.1765)
 			Outline.BorderColor3 = Color3.new(0.0392,0.0392,0.0392)
 			Outline.AnchorPoint = NewVector2(0,1)
-			Outline.Text = ""
-			Outline.AutoButtonColor = false
 			--
 			Inline.Name = "Inline"
 			Inline.Position = UDim2.new(0,1,0,1)
@@ -3353,6 +3378,7 @@ Library.Sections.__index = Library.Sections;
 			Inline.BackgroundColor3 = Color3.new(0.1294,0.1294,0.1294)
 			Inline.BorderSizePixel = 0
 			Inline.BorderColor3 = Color3.new(0,0,0)
+			Inline.ZIndex = 4 -- ✅ PATCH
 			--
 			Value.Name = "Value"
 			Value.Position = UDim2.new(0,2,0,0)
@@ -3369,6 +3395,10 @@ Library.Sections.__index = Library.Sections;
 			Value.TextWrapped = true
 			Value.Text = Textbox.State
 			Value.ClearTextOnFocus = false
+			Value.TextEditable = true -- ✅ PATCH
+			Value.Active = true -- ✅ PATCH
+			Value.Selectable = true -- ✅ PATCH
+			Value.ZIndex = 5 -- ✅ PATCH
 			--
 			Title.Name = "Title"
 			Title.Position = UDim2.new(0,15,0,0)
@@ -3396,6 +3426,23 @@ Library.Sections.__index = Library.Sections;
 				table.remove(Library.ThemeObjects, table.find(Library.ThemeObjects, Title))
 				Title.TextColor3 = Color3.new(0.5686,0.5686,0.5686)
 			end)
+
+			-- ✅ PATCH: แตะที่ TextBox แล้ว CaptureFocus ทันที
+			Value.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch
+					or input.UserInputType == Enum.UserInputType.MouseButton1 then
+					Value:CaptureFocus()
+				end
+			end)
+
+			-- ✅ PATCH: แตะที่ Outline ก็โฟกัสให้ด้วย
+			Outline.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch
+					or input.UserInputType == Enum.UserInputType.MouseButton1 then
+					Value:CaptureFocus()
+				end
+			end)
+
 			Value.FocusLost:Connect(function()
 				Textbox.Callback(Value.Text)
 				Library.Flags[Textbox.Flag] = Value.Text
@@ -3489,7 +3536,7 @@ Library.Sections.__index = Library.Sections;
 			end)
 		end
 		--
-		function Sections:Label(Properties) -- fuck finobe
+		function Sections:Label(Properties)
 			local Properties = Properties or {}
 			local Label = {
 				Window = self.Window,
@@ -3498,7 +3545,7 @@ Library.Sections.__index = Library.Sections;
 				Name = Properties.Name or "label",
 				Centered = Properties.Centered or false,
 			}
-			local NewButton = Instance.new('TextLabel', Label.Section.Elements.SectionContent) -- ya im lazy
+			local NewButton = Instance.new('TextLabel', Label.Section.Elements.SectionContent)
 			--
 			NewButton.Name = "NewButton"
 			NewButton.Size = UDim2.new(1,0,0,12)
